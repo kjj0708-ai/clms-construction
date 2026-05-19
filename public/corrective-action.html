@@ -1,0 +1,246 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <meta name="theme-color" content="#1a3a5c" />
+  <meta name="description" content="시설공사 통합관리시스템 — 시정조치" />
+  <title>시정조치 — CLMS</title>
+
+  <link rel="manifest" href="/manifest.json" />
+  <link rel="icon" href="/icons/favicon-32.png" type="image/png" />
+  <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png" />
+
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/pretendard@1.3.9/dist/web/static/pretendard.min.css" />
+  <link rel="stylesheet" href="/css/styles.css" />
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="/js/tailwind-config.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/browser-image-compression@2.0.2/dist/browser-image-compression.js"></script>
+</head>
+<body class="min-h-full bg-slate-100">
+  <div id="header"></div>
+
+  <main class="max-w-2xl mx-auto px-4 py-6 clms-fade-in">
+    <a id="back" href="/dashboard.html" class="text-slate-400 hover:text-navy text-sm">← 사업으로</a>
+
+    <div id="content" hidden>
+      <article class="bg-white rounded-2xl border border-slate-200 p-5 mt-2">
+        <div class="flex items-start justify-between gap-2">
+          <div>
+            <span class="text-xs font-bold text-navy">🛠️ 시정조치</span>
+            <h1 id="c-item" class="text-lg font-bold text-navy-dark mt-1"></h1>
+          </div>
+          <span id="c-status"></span>
+        </div>
+
+        <!-- 진행 단계 -->
+        <ol id="c-steps" class="flex items-center gap-1 mt-4"></ol>
+
+        <!-- 미흡 사항 -->
+        <div class="mt-4 bg-red-50 rounded-xl p-3">
+          <div class="text-xs font-bold text-red-700">미흡 사항</div>
+          <div id="c-issue" class="text-sm text-slate-700 mt-1"></div>
+          <div id="c-issue-photos" class="grid grid-cols-3 gap-2 mt-2"></div>
+        </div>
+
+        <!-- 시정 결과 -->
+        <div id="c-correction" class="mt-3"></div>
+
+        <!-- 액션 영역 -->
+        <div id="c-actions" class="mt-4"></div>
+      </article>
+    </div>
+
+    <div id="loading" class="bg-white rounded-2xl border border-slate-200 p-10 text-center mt-4">
+      <span class="clms-spinner clms-spinner--navy"></span>
+      <p class="text-sm text-slate-400 mt-2">불러오는 중...</p>
+    </div>
+    <div id="denied" hidden class="bg-white rounded-2xl border border-slate-200 p-10 text-center mt-4">
+      <p class="text-sm text-slate-500">시정조치를 찾을 수 없거나 조회 권한이 없습니다.</p>
+      <a href="/dashboard.html" class="inline-block mt-3 text-navy font-semibold text-sm">대시보드로</a>
+    </div>
+  </main>
+  <div id="footer"></div>
+
+  <script type="module">
+    import '/js/app.js';
+    import { mountAppHeader, mountFooter, toast, confirmDialog } from '/js/components/layout.js';
+    import { escapeHtml } from '/js/components/link-renderer.js';
+    import { openImageViewer } from '/js/components/image-viewer.js';
+    import { requireActive } from '/js/auth.js';
+    import { Db } from '/js/backend.js';
+    import { canViewProject } from '/js/projects.js';
+    import { resolveDraftImages } from '/js/notices.js';
+    import { getCorrectiveAction, submitCorrection, confirmCorrectionBySupervisor,
+             confirmCorrectionByOfficer, CA_STATUS, roleSlot } from '/js/inspections.js';
+
+    const params = new URLSearchParams(location.search);
+    const projectId = params.get('project');
+    const actionId = params.get('id');
+    const STEPS = [
+      { key: 'open', label: '시정 대기' },
+      { key: 'submitted', label: '시정 완료' },
+      { key: 'supervisor_confirmed', label: '감리 확인' },
+      { key: 'closed', label: '폐쇄' },
+    ];
+
+    function fmtDateTime(iso) {
+      const d = new Date(iso);
+      if (isNaN(d)) return '';
+      return `${d.getFullYear()}.${String(d.getMonth()+1).padStart(2,'0')}.${String(d.getDate()).padStart(2,'0')} ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;
+    }
+
+    (async () => {
+      const user = await requireActive();
+      if (!user) return;
+      mountAppHeader(document.getElementById('header'), { user });
+      mountFooter(document.getElementById('footer'));
+
+      const project = projectId ? await Db.getProject(projectId) : null;
+      let action = (project && actionId) ? await getCorrectiveAction(projectId, actionId) : null;
+
+      document.getElementById('loading').hidden = true;
+      if (!project || !action || action.deletedAt || !canViewProject(user, project)) {
+        document.getElementById('denied').hidden = false;
+        return;
+      }
+      document.getElementById('content').hidden = false;
+      document.getElementById('back').href = `/project-detail.html?id=${encodeURIComponent(projectId)}`;
+
+      const mySlot = roleSlot(user.role);
+
+      function render() {
+        document.getElementById('c-item').textContent =
+          `${action.inspectionLabel ? action.inspectionLabel + ' · ' : ''}${action.itemName}`;
+        const si = CA_STATUS[action.status] || CA_STATUS.open;
+        document.getElementById('c-status').innerHTML =
+          `<span class="text-xs font-bold px-2.5 py-1 rounded ${si.badge}">${si.label}</span>`;
+
+        const curIdx = STEPS.findIndex((s) => s.key === action.status);
+        document.getElementById('c-steps').innerHTML = STEPS.map((s, i) => `
+          <li class="flex-1 flex flex-col items-center gap-1">
+            <div class="w-6 h-6 rounded-full flex items-center justify-center text-[11px] font-bold
+              ${i < curIdx ? 'bg-emerald-500 text-white' : i === curIdx ? 'bg-navy text-white' : 'bg-slate-200 text-slate-500'}">
+              ${i < curIdx ? '✓' : i + 1}
+            </div>
+            <span class="text-[10px] ${i === curIdx ? 'text-navy font-bold' : 'text-slate-400'}">${s.label}</span>
+          </li>`).join('');
+
+        document.getElementById('c-issue').textContent = action.issue || '-';
+        document.getElementById('c-issue-photos').innerHTML = (action.issuePhotos || []).map((img, i) => `
+          <img src="${img.thumbnailUrl || img.url}" data-issue-img="${i}"
+            class="w-full aspect-square object-cover rounded-lg border border-slate-200 cursor-pointer" alt="" />`).join('');
+
+        // 시정 결과
+        const corrEl = document.getElementById('c-correction');
+        if (action.correctedAt) {
+          corrEl.innerHTML = `
+            <div class="bg-emerald-50 rounded-xl p-3">
+              <div class="text-xs font-bold text-emerald-700">시정 결과 · ${fmtDateTime(action.correctedAt)}</div>
+              <div class="text-sm text-slate-700 mt-1">${escapeHtml(action.correctionMemo || '-')}</div>
+              <div class="grid grid-cols-3 gap-2 mt-2">
+                ${(action.correctionPhotos || []).map((img, i) => `
+                  <img src="${img.thumbnailUrl || img.url}" data-corr-img="${i}"
+                    class="w-full aspect-square object-cover rounded-lg border border-slate-200 cursor-pointer" alt="" />`).join('')}
+              </div>
+            </div>
+            ${action.supervisorConfirm ? `<div class="text-xs text-slate-500 mt-2">✓ 감리 확인 — ${escapeHtml(action.supervisorConfirm.name)} · ${fmtDateTime(action.supervisorConfirm.at)}</div>` : ''}
+            ${action.officerConfirm ? `<div class="text-xs text-slate-500 mt-1">✓ 발주처 확인 — ${escapeHtml(action.officerConfirm.name)} · ${fmtDateTime(action.officerConfirm.at)}</div>` : ''}`;
+        } else {
+          corrEl.innerHTML = '';
+        }
+
+        renderActions();
+      }
+
+      function renderActions() {
+        const el = document.getElementById('c-actions');
+        el.innerHTML = '';
+
+        if (action.status === 'open' && mySlot === 'contractor') {
+          el.innerHTML = `
+            <div class="border-t border-slate-100 pt-3">
+              <div class="text-sm font-bold text-navy-dark mb-2">시정 완료 제출</div>
+              <textarea data-memo rows="2" placeholder="시정 내용을 입력하세요"
+                class="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm resize-y focus:outline-none focus:ring-2 focus:ring-navy/30"></textarea>
+              <button data-act="pick" type="button" class="mt-2 text-xs font-semibold text-slate-500 hover:text-navy">📷 시정 완료 사진 첨부</button>
+              <input data-file type="file" accept="image/*" multiple hidden />
+              <div data-previews class="flex flex-wrap gap-2 mt-2"></div>
+              <button data-act="submit" class="w-full mt-3 py-2.5 rounded-xl font-bold text-white bg-navy hover:bg-navy-light">시정 완료 제출</button>
+            </div>`;
+          wireSubmitForm(el);
+        } else if (action.status === 'submitted' && mySlot === 'supervisor') {
+          el.innerHTML = `<button data-act="sv-confirm" class="w-full py-2.5 rounded-xl font-bold text-white bg-navy hover:bg-navy-light">감리 확인</button>`;
+        } else if (action.status === 'supervisor_confirmed' && mySlot === 'officer') {
+          el.innerHTML = `<button data-act="of-confirm" class="w-full py-2.5 rounded-xl font-bold text-white bg-navy hover:bg-navy-light">발주처 최종 확인 (폐쇄)</button>`;
+        } else if (action.status === 'closed') {
+          el.innerHTML = `<div class="text-center text-sm text-emerald-600 font-semibold">✓ 시정조치가 폐쇄되었습니다.</div>`;
+        } else {
+          el.innerHTML = `<div class="text-center text-xs text-slate-400">다음 단계 담당자의 처리를 기다리고 있습니다.</div>`;
+        }
+      }
+
+      const pendingPhotos = [];
+      function wireSubmitForm(el) {
+        const fileInput = el.querySelector('[data-file]');
+        const previews = el.querySelector('[data-previews]');
+        function renderPreviews() {
+          previews.innerHTML = pendingPhotos.map((img, i) => `
+            <div class="relative w-16 h-16 rounded-lg overflow-hidden border border-slate-200">
+              <img src="${img.url}" class="w-full h-full object-cover" alt="" />
+              <button type="button" data-remove="${i}" class="absolute top-0.5 right-0.5 w-5 h-5 rounded-full bg-black/60 text-white text-xs leading-none">✕</button>
+            </div>`).join('');
+        }
+        el.querySelector('[data-act="pick"]').addEventListener('click', () => fileInput.click());
+        fileInput.addEventListener('change', () => {
+          for (const f of fileInput.files) pendingPhotos.push({ file: f, url: URL.createObjectURL(f), name: f.name });
+          fileInput.value = '';
+          renderPreviews();
+        });
+        previews.addEventListener('click', (e) => {
+          const rm = e.target.closest('[data-remove]');
+          if (rm) { pendingPhotos.splice(Number(rm.dataset.remove), 1); renderPreviews(); }
+        });
+      }
+
+      document.getElementById('content').addEventListener('click', async (e) => {
+        const issueImg = e.target.closest('[data-issue-img]');
+        if (issueImg) { openImageViewer(action.issuePhotos.map((i) => i.url), { index: Number(issueImg.dataset.issueImg) }); return; }
+        const corrImg = e.target.closest('[data-corr-img]');
+        if (corrImg) { openImageViewer(action.correctionPhotos.map((i) => i.url), { index: Number(corrImg.dataset.corrImg) }); return; }
+
+        const act = e.target.closest('[data-act]');
+        if (!act) return;
+
+        if (act.dataset.act === 'submit') {
+          const memo = document.querySelector('[data-memo]').value.trim();
+          if (!memo) { toast('시정 내용을 입력해 주세요.', 'warning'); return; }
+          act.disabled = true;
+          try {
+            const photos = await resolveDraftImages(pendingPhotos, `projects/${projectId}/correctiveActions/${actionId}`);
+            action = await submitCorrection(project, action, user, { photos, memo });
+            toast('시정 완료가 제출되었습니다.', 'success');
+            render();
+          } catch (err) {
+            console.error(err);
+            toast('제출 중 오류가 발생했습니다.', 'error');
+            act.disabled = false;
+          }
+        } else if (act.dataset.act === 'sv-confirm') {
+          if (!(await confirmDialog({ title: '감리 확인', message: '시정 결과를 확인하시겠습니까?', confirmText: '확인' }))) return;
+          action = await confirmCorrectionBySupervisor(project, action, user);
+          toast('감리 확인이 완료되었습니다.', 'success');
+          render();
+        } else if (act.dataset.act === 'of-confirm') {
+          if (!(await confirmDialog({ title: '발주처 최종 확인', message: '시정조치를 폐쇄 처리하시겠습니까?', confirmText: '폐쇄 처리' }))) return;
+          action = await confirmCorrectionByOfficer(project, action, user);
+          toast('시정조치가 폐쇄되었습니다.', 'success');
+          render();
+        }
+      });
+
+      render();
+    })();
+  </script>
+</body>
+</html>

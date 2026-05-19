@@ -1,0 +1,75 @@
+/* CLMS 커스텀 보조 스타일
+ * 대부분의 스타일은 Tailwind 유틸리티로 처리하고,
+ * 여기에는 Tailwind로 표현하기 번거로운 전역 스타일만 둔다. */
+
+:root {
+  --clms-navy: #1a3a5c;
+  --clms-gold: #c9a961;
+}
+
+html, body {
+  height: 100%;
+}
+
+body {
+  font-family: 'Pretendard', 'Pretendard Variable', -apple-system,
+    BlinkMacSystemFont, system-ui, Roboto, 'Segoe UI', sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  -webkit-tap-highlight-color: transparent;
+  text-size-adjust: 100%;
+}
+
+[hidden] { display: none !important; }
+
+/* 커스텀 스크롤바 (데스크톱) */
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb {
+  background: rgba(26, 58, 92, 0.25);
+  border-radius: 6px;
+}
+::-webkit-scrollbar-thumb:hover { background: rgba(26, 58, 92, 0.45); }
+
+/* 로딩 스피너 */
+@keyframes clms-spin { to { transform: rotate(360deg); } }
+.clms-spinner {
+  display: inline-block;
+  width: 1.25rem; height: 1.25rem;
+  border: 2.5px solid rgba(255, 255, 255, 0.35);
+  border-top-color: #fff;
+  border-radius: 50%;
+  animation: clms-spin 0.7s linear infinite;
+}
+.clms-spinner--navy {
+  border-color: rgba(26, 58, 92, 0.2);
+  border-top-color: var(--clms-navy);
+}
+
+/* 페이드 인 (페이지 진입) */
+@keyframes clms-fade-in { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+.clms-fade-in { animation: clms-fade-in 0.25s ease-out both; }
+
+/* 텍스트 줄임 (2줄) */
+.clms-clamp-2 {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+/* iOS 안전 영역 (하단 고정 버튼 등) */
+.clms-safe-bottom { padding-bottom: env(safe-area-inset-bottom, 0); }
+
+/* 토스트 컨테이너 */
+#clms-toast-root {
+  position: fixed;
+  left: 50%;
+  bottom: calc(24px + env(safe-area-inset-bottom, 0));
+  transform: translateX(-50%);
+  z-index: 10000;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  pointer-events: none;
+}

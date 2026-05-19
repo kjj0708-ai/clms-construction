@@ -1,0 +1,221 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <meta name="theme-color" content="#1a3a5c" />
+  <meta name="description" content="시설공사 통합관리시스템 — 사용자 승인 관리" />
+  <title>사용자 승인 관리 — CLMS</title>
+
+  <link rel="manifest" href="/manifest.json" />
+  <link rel="icon" href="/icons/favicon-32.png" type="image/png" />
+  <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png" />
+
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/pretendard@1.3.9/dist/web/static/pretendard.min.css" />
+  <link rel="stylesheet" href="/css/styles.css" />
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="/js/tailwind-config.js"></script>
+</head>
+<body class="min-h-full bg-slate-100">
+  <div id="header"></div>
+
+  <main class="max-w-3xl mx-auto px-4 py-6 clms-fade-in">
+    <div class="flex items-center gap-2">
+      <a href="/dashboard.html" class="text-slate-400 hover:text-navy text-sm">← 대시보드</a>
+    </div>
+    <h1 class="text-xl font-bold text-navy-dark mt-1">사용자 승인 관리</h1>
+    <p class="text-xs text-slate-500 mt-0.5">가입 신청을 검토하고 역할을 부여합니다. (영업일 1일 이내 처리 권장)</p>
+
+    <div class="flex gap-1 bg-white border border-slate-200 rounded-xl p-1 mt-4 w-fit">
+      <button data-filter="pending" class="px-4 py-1.5 rounded-lg text-sm font-semibold">승인 대기 <span id="cnt-pending" class="ml-0.5"></span></button>
+      <button data-filter="processed" class="px-4 py-1.5 rounded-lg text-sm font-semibold">처리 완료</button>
+    </div>
+
+    <div id="list" class="mt-4 space-y-2.5"></div>
+    <div id="empty" hidden class="bg-white rounded-xl border border-slate-200 p-10 text-center text-sm text-slate-400"></div>
+  </main>
+  <div id="footer"></div>
+
+  <script type="module">
+    import '/js/app.js';
+    import { mountAppHeader, mountFooter, toast } from '/js/components/layout.js';
+    import { escapeHtml } from '/js/components/link-renderer.js';
+    import { requireRole } from '/js/auth.js';
+    import { Db, nowIso } from '/js/backend.js';
+    import { ROLES, USER_TYPES, roleLabel } from '/js/constants.js';
+
+    const ASSIGNABLE_ROLES = Object.keys(ROLES).filter((r) => r !== 'pending');
+
+    (async () => {
+      const admin = await requireRole(['system_admin']);
+      if (!admin) return;
+
+      mountAppHeader(document.getElementById('header'), { user: admin });
+      mountFooter(document.getElementById('footer'));
+
+      const listEl = document.getElementById('list');
+      const emptyEl = document.getElementById('empty');
+      let filter = 'pending';
+
+      function setFilterUI() {
+        document.querySelectorAll('[data-filter]').forEach((b) => {
+          const on = b.dataset.filter === filter;
+          b.classList.toggle('bg-navy', on);
+          b.classList.toggle('text-white', on);
+          b.classList.toggle('text-slate-500', !on);
+        });
+      }
+
+      function fmtTime(iso) {
+        const d = new Date(iso);
+        return isNaN(d) ? '-' : `${d.getFullYear()}.${String(d.getMonth()+1).padStart(2,'0')}.${String(d.getDate()).padStart(2,'0')} ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;
+      }
+
+      async function render() {
+        setFilterUI();
+        listEl.innerHTML = '<div class="text-center py-8"><span class="clms-spinner clms-spinner--navy"></span></div>';
+
+        const all = await Db.listApprovalRequests();
+        const pending = all.filter((r) => r.status === 'pending');
+        document.getElementById('cnt-pending').textContent = pending.length ? `(${pending.length})` : '';
+
+        const rows = filter === 'pending' ? pending : all.filter((r) => r.status !== 'pending');
+        if (rows.length === 0) {
+          listEl.innerHTML = '';
+          emptyEl.hidden = false;
+          emptyEl.textContent = filter === 'pending' ? '승인 대기 중인 신청이 없습니다.' : '처리 완료된 신청이 없습니다.';
+          return;
+        }
+        emptyEl.hidden = true;
+
+        listEl.innerHTML = rows.map((req) => {
+          const u = req.userInfo || {};
+          const statusBadge = req.status === 'pending'
+            ? '<span class="text-[11px] font-bold px-2 py-0.5 rounded bg-amber-100 text-amber-700">대기</span>'
+            : req.status === 'approved'
+              ? '<span class="text-[11px] font-bold px-2 py-0.5 rounded bg-emerald-100 text-emerald-700">승인</span>'
+              : '<span class="text-[11px] font-bold px-2 py-0.5 rounded bg-red-100 text-red-700">반려</span>';
+          return `
+            <div class="bg-white rounded-xl border border-slate-200 p-4" data-req="${req.requestId}">
+              <div class="flex items-start justify-between gap-3">
+                <div class="min-w-0">
+                  <div class="flex items-center gap-1.5">
+                    <span class="font-bold text-navy-dark">${escapeHtml(u.name || '-')}</span>
+                    ${statusBadge}
+                    <span class="text-[11px] text-slate-400">${escapeHtml(USER_TYPES[u.userType] || '')}</span>
+                  </div>
+                  <div class="text-xs text-slate-500 mt-0.5">${escapeHtml(u.department || '')} · ${escapeHtml(u.position || '')}</div>
+                  <div class="text-xs text-slate-400 mt-0.5">${escapeHtml(u.contact || '')} · 신청 ${fmtTime(req.requestedAt)}</div>
+                </div>
+                ${req.status === 'pending'
+                  ? '<button data-act="review" class="shrink-0 px-3 py-1.5 rounded-lg bg-navy text-white text-sm font-semibold hover:bg-navy-light">검토</button>'
+                  : `<span class="shrink-0 text-xs text-slate-400">${escapeHtml(roleLabel((req.assignedRole) || ''))}</span>`}
+              </div>
+              ${req.status === 'rejected' && req.rejectionReason
+                ? `<div class="mt-2 text-xs bg-red-50 text-red-600 rounded-lg px-3 py-2">반려 사유: ${escapeHtml(req.rejectionReason)}</div>` : ''}
+            </div>`;
+        }).join('');
+      }
+
+      listEl.addEventListener('click', async (e) => {
+        const btn = e.target.closest('[data-act="review"]');
+        if (!btn) return;
+        const requestId = btn.closest('[data-req]').dataset.req;
+        const req = (await Db.listApprovalRequests()).find((r) => r.requestId === requestId);
+        if (req) openReviewModal(req);
+      });
+
+      document.querySelectorAll('[data-filter]').forEach((b) =>
+        b.addEventListener('click', () => { filter = b.dataset.filter; render(); }));
+
+      function openReviewModal(req) {
+        const u = req.userInfo || {};
+        const overlay = document.createElement('div');
+        overlay.className = 'fixed inset-0 z-[10000] flex items-center justify-center bg-black/50 p-4';
+        overlay.innerHTML = `
+          <div class="bg-white rounded-2xl shadow-xl w-full max-w-md p-6 clms-fade-in max-h-[90vh] overflow-y-auto">
+            <h3 class="text-lg font-bold text-navy-dark">가입 신청 검토</h3>
+            <div class="mt-3 bg-slate-50 rounded-xl p-4 space-y-1.5 text-sm">
+              ${[['이름', u.name], ['소속', u.department], ['직위', u.position], ['연락처', u.contact],
+                 ['이메일', u.email || '-'], ['사용자 유형', USER_TYPES[u.userType] || '-'], ['비고', u.note || '-']]
+                .map(([k, v]) => `<div class="flex justify-between gap-3">
+                  <span class="text-slate-400 shrink-0">${k}</span>
+                  <span class="text-slate-700 font-medium text-right break-all">${escapeHtml(String(v || '-'))}</span></div>`).join('')}
+            </div>
+
+            <label class="block text-sm font-semibold text-slate-700 mt-4 mb-1">역할(Role) 부여 <span class="text-red-500">*</span></label>
+            <select id="role-select" class="w-full border border-slate-200 rounded-lg px-3 py-2.5 text-sm bg-white">
+              <option value="">선택하세요</option>
+              ${ASSIGNABLE_ROLES.map((r) => `<option value="${r}">${ROLES[r].label} (${r})</option>`).join('')}
+            </select>
+
+            <div class="mt-3 text-[11px] text-slate-400 bg-slate-50 rounded-lg px-3 py-2">
+              접근 가능 사업 지정은 Phase 3(사업 등록) 이후 제공됩니다. 현재는 빈 목록으로 승인됩니다.
+            </div>
+
+            <label class="block text-sm font-semibold text-slate-700 mt-3 mb-1">반려 사유 <span class="text-xs font-normal text-slate-400">(반려 시 필수)</span></label>
+            <textarea id="reject-reason" rows="2" placeholder="반려하는 경우 사유를 입력하세요"
+              class="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm resize-y"></textarea>
+
+            <div class="mt-5 flex gap-2">
+              <button data-modal="cancel" class="flex-1 py-2.5 rounded-xl font-medium text-slate-500 bg-slate-100 hover:bg-slate-200">닫기</button>
+              <button data-modal="reject" class="flex-1 py-2.5 rounded-xl font-semibold text-red-600 bg-red-50 hover:bg-red-100">반려</button>
+              <button data-modal="approve" class="flex-[1.4] py-2.5 rounded-xl font-bold text-white bg-navy hover:bg-navy-light">승인</button>
+            </div>
+          </div>`;
+
+        function close() { overlay.remove(); }
+
+        overlay.addEventListener('click', async (e) => {
+          if (e.target === overlay || e.target.dataset.modal === 'cancel') { close(); return; }
+          const action = e.target.dataset.modal;
+          if (action !== 'approve' && action !== 'reject') return;
+
+          const btns = overlay.querySelectorAll('[data-modal]');
+          if (action === 'approve') {
+            const role = overlay.querySelector('#role-select').value;
+            if (!role) { toast('부여할 역할을 선택해 주세요.', 'warning'); return; }
+            btns.forEach((b) => b.disabled = true);
+            try {
+              await Db.updateUser(req.userId, {
+                role, status: 'active', accessibleProjects: [],
+                approvedAt: nowIso(), approvedBy: admin.uid, rejectionReason: null,
+              });
+              await Db.updateApprovalRequest(req.requestId, {
+                status: 'approved', processedAt: nowIso(), processedBy: admin.uid, assignedRole: role,
+              });
+              toast(`${u.name}님을 ${ROLES[role].label}(으)로 승인했습니다.`, 'success');
+              close(); render();
+            } catch (err) {
+              console.error(err);
+              toast('승인 처리 중 오류가 발생했습니다.', 'error');
+              btns.forEach((b) => b.disabled = false);
+            }
+          } else {
+            const reason = overlay.querySelector('#reject-reason').value.trim();
+            if (!reason) { toast('반려 사유를 입력해 주세요.', 'warning'); return; }
+            btns.forEach((b) => b.disabled = true);
+            try {
+              await Db.updateUser(req.userId, {
+                status: 'inactive', role: 'pending', rejectionReason: reason, rejectedAt: nowIso(),
+              });
+              await Db.updateApprovalRequest(req.requestId, {
+                status: 'rejected', processedAt: nowIso(), processedBy: admin.uid, rejectionReason: reason,
+              });
+              toast(`${u.name}님의 신청을 반려했습니다.`, 'info');
+              close(); render();
+            } catch (err) {
+              console.error(err);
+              toast('반려 처리 중 오류가 발생했습니다.', 'error');
+              btns.forEach((b) => b.disabled = false);
+            }
+          }
+        });
+        document.body.appendChild(overlay);
+      }
+
+      render();
+    })();
+  </script>
+</body>
+</html>

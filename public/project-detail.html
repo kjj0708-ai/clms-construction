@@ -1,0 +1,635 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <meta name="theme-color" content="#1a3a5c" />
+  <meta name="description" content="시설공사 통합관리시스템 — 사업 상세" />
+  <title>사업 상세 — CLMS</title>
+
+  <link rel="manifest" href="/manifest.json" />
+  <link rel="icon" href="/icons/favicon-32.png" type="image/png" />
+  <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png" />
+
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/pretendard@1.3.9/dist/web/static/pretendard.min.css" />
+  <link rel="stylesheet" href="/css/styles.css" />
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="/js/tailwind-config.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/browser-image-compression@2.0.2/dist/browser-image-compression.js"></script>
+</head>
+<body class="min-h-full bg-slate-100">
+  <div id="header"></div>
+
+  <main class="max-w-3xl mx-auto px-4 py-6 clms-fade-in">
+    <a href="/projects.html" class="text-slate-400 hover:text-navy text-sm">← 사업 목록</a>
+
+    <div id="content" hidden>
+      <!-- 사업 기본 정보 -->
+      <section class="bg-white rounded-2xl border border-slate-200 p-5 mt-2">
+        <div class="flex items-start justify-between gap-3">
+          <div class="min-w-0">
+            <div class="flex items-center gap-1.5 flex-wrap">
+              <h1 id="p-name" class="text-lg font-bold text-navy-dark"></h1>
+              <span id="p-status"></span>
+            </div>
+            <p id="p-meta" class="text-xs text-slate-400 mt-0.5"></p>
+          </div>
+          <span id="p-progress" class="shrink-0 text-lg font-extrabold text-navy"></span>
+        </div>
+        <div class="flex gap-2 mt-3">
+          <button id="btn-report" class="flex-1 py-2 rounded-lg bg-slate-100 text-slate-600 text-xs font-semibold hover:bg-slate-200">보고서 출력</button>
+          <button id="btn-export" class="flex-1 py-2 rounded-lg bg-slate-100 text-slate-600 text-xs font-semibold hover:bg-slate-200">JSON 내보내기</button>
+        </div>
+      </section>
+
+      <!-- 12단계 스텝퍼 -->
+      <section class="bg-white rounded-2xl border border-slate-200 p-5 mt-4">
+        <h2 class="font-bold text-navy-dark text-sm">진행 단계</h2>
+        <div id="stepper" class="flex gap-1 mt-3 overflow-x-auto pb-2"></div>
+      </section>
+
+      <!-- 현재 단계 카드 -->
+      <section class="bg-white rounded-2xl border border-slate-200 p-5 mt-4">
+        <div class="flex items-center justify-between">
+          <h2 class="font-bold text-navy-dark">현재 단계</h2>
+          <span id="stage-elapsed" class="text-xs text-slate-400"></span>
+        </div>
+        <div id="stage-title" class="text-navy font-bold mt-1"></div>
+        <div class="mt-3">
+          <p class="text-xs font-semibold text-slate-500 mb-1.5">필수 서류</p>
+          <div id="doc-list" class="space-y-1.5"></div>
+        </div>
+        <button id="btn-advance" class="w-full mt-4 py-2.5 rounded-xl font-bold text-white bg-navy hover:bg-navy-light disabled:opacity-40" hidden></button>
+        <p id="advance-hint" class="text-[11px] text-slate-400 mt-1.5 text-center" hidden></p>
+        <input id="doc-file" type="file" accept=".pdf,.hwp,.hwpx,.docx,.xlsx,.jpg,.jpeg,.png" hidden />
+      </section>
+
+      <!-- 탭 -->
+      <section class="bg-white rounded-2xl border border-slate-200 mt-4 overflow-hidden">
+        <div id="tabs" class="flex border-b border-slate-100 overflow-x-auto"></div>
+        <div id="tab-panel" class="p-5"></div>
+      </section>
+    </div>
+
+    <div id="loading" class="bg-white rounded-2xl border border-slate-200 p-10 text-center mt-4">
+      <span class="clms-spinner clms-spinner--navy"></span>
+      <p class="text-sm text-slate-400 mt-2">불러오는 중...</p>
+    </div>
+    <div id="denied" hidden class="bg-white rounded-2xl border border-slate-200 p-10 text-center mt-4">
+      <p class="text-sm text-slate-500">사업을 찾을 수 없거나 조회 권한이 없습니다.</p>
+      <a href="/projects.html" class="inline-block mt-3 text-navy font-semibold text-sm">사업 목록으로</a>
+    </div>
+  </main>
+  <div id="footer"></div>
+
+  <script type="module">
+    import '/js/app.js';
+    import { mountAppHeader, mountFooter, toast, confirmDialog } from '/js/components/layout.js';
+    import { escapeHtml } from '/js/components/link-renderer.js';
+    import { openNoticeComposer } from '/js/components/notice-composer.js';
+    import { openPostComposer } from '/js/components/post-composer.js';
+    import { openDailyLogComposer, openPhotoUploader, openDrawingUploader } from '/js/components/archive-composers.js';
+    import { openInspectionComposer } from '/js/components/inspection-composer.js';
+    import { openImageViewer } from '/js/components/image-viewer.js';
+    import { requireActive } from '/js/auth.js';
+    import { Db, Storage, nowIso, isMock } from '/js/backend.js';
+    import { STAGES, stageName, TOTAL_STAGES } from '/js/stages.js';
+    import { PROJECT_STATUS, NOTICE_PRIORITIES, NOTICE_AUTHOR_ROLES, PROCESS_OPTIONS } from '/js/constants.js';
+    import { getPostType, statusInfo } from '/js/post-types.js';
+    import { canCreatePost, postLink } from '/js/board.js';
+    import { listDailyLogs, listPhotos, listDrawings,
+             canWriteDailyLog, canUploadPhoto, canUploadDrawing } from '/js/archive.js';
+    import { listInspections, listCorrectiveActions, canInspect, OVERALL_INFO, CA_STATUS } from '/js/inspections.js';
+    import { generateProjectStatusDocx, downloadBlob } from '/js/reports.js';
+    import { buildProjectExport, envelopeToBlob } from '/js/data-io.js';
+    import { canViewProject, canEditProjects, calcProgress, canAdvanceStage, currentStageDocsComplete,
+             buildStageAdvancePatch, formatBudget, formatDate, daysSince } from '/js/projects.js';
+
+    const TABS = [
+      { id: 'overview', label: '개요', phase: 3 },
+      { id: 'notice', label: '공지', phase: 4 },
+      { id: 'instruction', label: '지시', phase: 5 },
+      { id: 'inquiry', label: '질의', phase: 5 },
+      { id: 'change', label: '설계변경', phase: 5 },
+      { id: 'meeting', label: '회의', phase: 5 },
+      { id: 'log', label: '일지', phase: 5 },
+      { id: 'photo', label: '사진', phase: 5 },
+      { id: 'drawing', label: '도면', phase: 5 },
+      { id: 'inspection', label: '점검', phase: 5 },
+    ];
+    const POST_TAB_TYPES = ['instruction', 'inquiry', 'change', 'meeting'];
+
+    (async () => {
+      const user = await requireActive();
+      if (!user) return;
+      mountAppHeader(document.getElementById('header'), { user });
+      mountFooter(document.getElementById('footer'));
+
+      const projectId = new URLSearchParams(location.search).get('id');
+      let project = projectId ? await Db.getProject(projectId) : null;
+
+      document.getElementById('loading').hidden = true;
+      if (!project || !canViewProject(user, project)) {
+        document.getElementById('denied').hidden = false;
+        return;
+      }
+      const editable = canEditProjects(user);
+      document.getElementById('content').hidden = false;
+
+      function renderHeader() {
+        document.getElementById('p-name').textContent = project.basicInfo.name;
+        const st = project.status;
+        document.getElementById('p-status').innerHTML = st === 'completed'
+          ? '<span class="text-[10px] font-bold px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-700">완료</span>'
+          : st === 'suspended'
+            ? '<span class="text-[10px] font-bold px-1.5 py-0.5 rounded bg-slate-200 text-slate-600">중단</span>'
+            : '<span class="text-[10px] font-bold px-1.5 py-0.5 rounded bg-blue-100 text-blue-700">진행 중</span>';
+        document.getElementById('p-meta').textContent =
+          `${project.projectId} · ${project.basicInfo.type} · ${project.basicInfo.department}`;
+        document.getElementById('p-progress').textContent = calcProgress(project) + '%';
+      }
+
+      function renderStepper() {
+        document.getElementById('stepper').innerHTML = STAGES.map((s) => {
+          const stg = project.stages[s.number] || {};
+          const cls = stg.status === 'completed' ? 'bg-emerald-500 text-white'
+            : stg.status === 'in_progress' ? 'bg-navy text-white ring-2 ring-gold'
+            : 'bg-slate-100 text-slate-400';
+          return `
+            <div class="shrink-0 w-16 flex flex-col items-center gap-1" title="${s.number}. ${s.name}">
+              <div class="w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold ${cls}">
+                ${stg.status === 'completed' ? '✓' : s.number}
+              </div>
+              <span class="text-[10px] text-center leading-tight ${stg.status === 'in_progress' ? 'text-navy font-bold' : 'text-slate-400'}">${s.name}</span>
+            </div>`;
+        }).join('');
+      }
+
+      function renderStageCard() {
+        const cur = project.currentStage;
+        const stg = project.stages[cur];
+        document.getElementById('stage-title').textContent = `${cur}. ${stageName(cur)}`;
+        document.getElementById('stage-elapsed').textContent =
+          stg.startedAt ? `진입 ${formatDate(stg.startedAt)} · ${daysSince(stg.startedAt)}일 경과` : '';
+
+        document.getElementById('doc-list').innerHTML = stg.requiredDocs.map((d, i) => `
+          <div class="flex items-center justify-between gap-2 border border-slate-100 rounded-lg px-3 py-2">
+            <div class="flex items-center gap-2 min-w-0">
+              <span class="${d.uploaded ? 'text-emerald-500' : 'text-slate-300'}">${d.uploaded ? '✓' : '○'}</span>
+              <div class="min-w-0">
+                <div class="text-sm text-slate-700 truncate">${escapeHtml(d.name)}</div>
+                ${d.uploaded && d.file ? `<div class="text-[10px] text-slate-400 truncate">${escapeHtml(d.file.name)}</div>` : ''}
+              </div>
+            </div>
+            ${editable && project.status === 'active'
+              ? `<button data-doc="${i}" class="shrink-0 text-xs font-semibold ${d.uploaded ? 'text-slate-400' : 'text-navy'} hover:underline">${d.uploaded ? '재업로드' : '업로드'}</button>`
+              : ''}
+          </div>`).join('');
+
+        const btn = document.getElementById('btn-advance');
+        const hint = document.getElementById('advance-hint');
+        btn.hidden = true; hint.hidden = true;
+        if (editable && project.status === 'active') {
+          btn.hidden = false;
+          const isLast = cur >= TOTAL_STAGES;
+          btn.textContent = isLast ? '사업 완료 처리' : `다음 단계로 전환 (${cur + 1}. ${stageName(cur + 1)})`;
+          const ready = currentStageDocsComplete(project);
+          btn.disabled = !ready;
+          if (!ready) {
+            hint.hidden = false;
+            hint.textContent = '필수 서류를 모두 업로드해야 단계를 전환할 수 있습니다.';
+          }
+        }
+      }
+
+      let activeTab = 'overview';
+      function renderTabs() {
+        document.getElementById('tabs').innerHTML = TABS.map((t) => `
+          <button data-tab="${t.id}"
+            class="shrink-0 px-4 py-3 text-sm font-semibold border-b-2 ${t.id === activeTab ? 'border-navy text-navy' : 'border-transparent text-slate-400'}">
+            ${t.label}
+          </button>`).join('');
+        renderTabPanel();
+      }
+      async function renderNoticeTab(panel) {
+        const canPost = NOTICE_AUTHOR_ROLES.includes(user.role);
+        panel.innerHTML = `
+          <div class="flex items-center justify-between">
+            <span class="text-sm font-bold text-navy-dark">공지사항</span>
+            ${canPost ? '<button data-act="new-notice" class="px-3 py-1.5 rounded-lg bg-navy text-white text-xs font-bold hover:bg-navy-light">+ 공지 작성</button>' : ''}
+          </div>
+          <div data-notice-list class="mt-3"><div class="text-center py-6"><span class="clms-spinner clms-spinner--navy"></span></div></div>`;
+        const listEl = panel.querySelector('[data-notice-list]');
+        const notices = (await Db.listNotices(project.projectId))
+          .filter((n) => !n.deletedAt)
+          .sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt)));
+        if (notices.length === 0) {
+          listEl.innerHTML = '<p class="text-sm text-slate-400 text-center py-6">등록된 공지가 없습니다.</p>';
+        } else {
+          listEl.innerHTML = notices.map((n) => {
+            const pr = NOTICE_PRIORITIES[n.priority] || NOTICE_PRIORITIES.normal;
+            const unread = !(n.readBy && n.readBy[user.uid]);
+            return `
+              <a href="/notice.html?project=${encodeURIComponent(project.projectId)}&id=${encodeURIComponent(n.noticeId)}"
+                class="block border border-slate-100 rounded-lg p-3 mb-2 hover:bg-slate-50">
+                <div class="flex items-center gap-1.5">
+                  <span class="text-[10px] font-bold px-1.5 py-0.5 rounded ${pr.badge}">${pr.label}</span>
+                  ${unread ? '<span class="w-1.5 h-1.5 rounded-full bg-red-500" title="안 읽음"></span>' : ''}
+                  <span class="font-semibold text-navy-dark text-sm truncate">${escapeHtml(n.title)}</span>
+                </div>
+                <div class="text-xs text-slate-400 mt-1">${escapeHtml(n.author.name)} · ${formatDate(n.createdAt)} · 댓글 ${n.commentCount || 0}</div>
+              </a>`;
+          }).join('');
+        }
+        const newBtn = panel.querySelector('[data-act="new-notice"]');
+        if (newBtn) {
+          newBtn.addEventListener('click', () => openNoticeComposer({
+            project, user, notice: null,
+            onSaved: (created) => {
+              location.href = `/notice.html?project=${encodeURIComponent(project.projectId)}&id=${encodeURIComponent(created.noticeId)}`;
+            },
+          }));
+        }
+      }
+
+      async function renderPostTab(panel, typeKey) {
+        const t = getPostType(typeKey);
+        const canPost = canCreatePost(typeKey, user);
+        panel.innerHTML = `
+          <div class="flex items-center justify-between">
+            <span class="text-sm font-bold text-navy-dark">${t.icon} ${t.label}</span>
+            ${canPost ? `<button data-act="new-post" class="px-3 py-1.5 rounded-lg bg-navy text-white text-xs font-bold hover:bg-navy-light">+ ${t.label} 작성</button>` : ''}
+          </div>
+          <div data-post-list class="mt-3"><div class="text-center py-6"><span class="clms-spinner clms-spinner--navy"></span></div></div>`;
+        const listEl = panel.querySelector('[data-post-list]');
+        const posts = (await Db.listPosts(project.projectId, t.collection))
+          .filter((p) => !p.deletedAt)
+          .sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt)));
+        if (posts.length === 0) {
+          listEl.innerHTML = `<p class="text-sm text-slate-400 text-center py-6">등록된 ${t.label}이(가) 없습니다.</p>`;
+        } else {
+          listEl.innerHTML = posts.map((p) => {
+            const si = statusInfo(typeKey, p.status);
+            const unread = !(p.readBy && p.readBy[user.uid]);
+            return `
+              <a href="${postLink(project.projectId, typeKey, p.postId)}"
+                class="block border border-slate-100 rounded-lg p-3 mb-2 hover:bg-slate-50">
+                <div class="flex items-center gap-1.5">
+                  <span class="text-[10px] font-bold px-1.5 py-0.5 rounded ${si.badge}">${si.label}</span>
+                  ${unread ? '<span class="w-1.5 h-1.5 rounded-full bg-red-500" title="안 읽음"></span>' : ''}
+                  <span class="font-semibold text-navy-dark text-sm truncate">${escapeHtml(p.title)}</span>
+                </div>
+                <div class="text-xs text-slate-400 mt-1">${escapeHtml(p.author.name)} · ${formatDate(p.createdAt)} · 댓글 ${p.commentCount || 0}</div>
+              </a>`;
+          }).join('');
+        }
+        const newBtn = panel.querySelector('[data-act="new-post"]');
+        if (newBtn) {
+          newBtn.addEventListener('click', () => openPostComposer({
+            typeKey, project, user, post: null,
+            onSaved: (created) => { location.href = postLink(project.projectId, typeKey, created.postId); },
+          }));
+        }
+      }
+
+      async function renderLogTab(panel) {
+        const canWrite = canWriteDailyLog(user);
+        panel.innerHTML = `
+          <div class="flex items-center justify-between">
+            <span class="text-sm font-bold text-navy-dark">📒 작업일지</span>
+            ${canWrite ? '<button data-act="new-log" class="px-3 py-1.5 rounded-lg bg-navy text-white text-xs font-bold hover:bg-navy-light">+ 작업일지</button>' : ''}
+          </div>
+          <div data-log-list class="mt-3"><div class="text-center py-6"><span class="clms-spinner clms-spinner--navy"></span></div></div>`;
+        const listEl = panel.querySelector('[data-log-list]');
+        const logs = (await listDailyLogs(project.projectId))
+          .filter((l) => !l.deletedAt)
+          .sort((a, b) => String(b.date).localeCompare(String(a.date)));
+        if (logs.length === 0) {
+          listEl.innerHTML = '<p class="text-sm text-slate-400 text-center py-6">등록된 작업일지가 없습니다.</p>';
+        } else {
+          listEl.innerHTML = logs.map((l) => `
+            <a href="/daily-log.html?project=${encodeURIComponent(project.projectId)}&id=${encodeURIComponent(l.postId)}"
+              class="block border border-slate-100 rounded-lg p-3 mb-2 hover:bg-slate-50">
+              <div class="flex items-center justify-between">
+                <span class="font-semibold text-navy-dark text-sm">${escapeHtml(l.date)}</span>
+                ${l.supervisorConfirm
+                  ? '<span class="text-[10px] font-bold px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-700">감리확인</span>'
+                  : '<span class="text-[10px] font-bold px-1.5 py-0.5 rounded bg-amber-100 text-amber-700">확인대기</span>'}
+              </div>
+              <div class="text-xs text-slate-500 mt-1 clms-clamp-2">${escapeHtml(l.workContent || '')}</div>
+              <div class="text-xs text-slate-400 mt-1">진척 ${l.progress || 0}% · 인원 ${l.workforce || 0}명 · ${escapeHtml(l.author.name)}</div>
+            </a>`).join('');
+        }
+        const newBtn = panel.querySelector('[data-act="new-log"]');
+        if (newBtn) newBtn.addEventListener('click', () => openDailyLogComposer({
+          project, user, log: null,
+          onSaved: (created) => { location.href = `/daily-log.html?project=${encodeURIComponent(project.projectId)}&id=${encodeURIComponent(created.postId)}`; },
+        }));
+      }
+
+      async function renderPhotoTab(panel) {
+        const canUp = canUploadPhoto(user);
+        panel.innerHTML = `
+          <div class="flex items-center justify-between">
+            <span class="text-sm font-bold text-navy-dark">📷 현장 사진</span>
+            ${canUp ? '<button data-act="new-photo" class="px-3 py-1.5 rounded-lg bg-navy text-white text-xs font-bold hover:bg-navy-light">+ 사진 업로드</button>' : ''}
+          </div>
+          <select data-photo-filter class="mt-2 border border-slate-200 rounded-lg px-2 py-1.5 text-sm bg-white">
+            <option value="">전체 공정</option>
+            ${PROCESS_OPTIONS.map((p) => `<option value="${p}">${p}</option>`).join('')}
+          </select>
+          <div data-photo-grid class="grid grid-cols-3 gap-2 mt-3"><div class="col-span-3 text-center py-6"><span class="clms-spinner clms-spinner--navy"></span></div></div>`;
+        const gridEl = panel.querySelector('[data-photo-grid]');
+        const filterEl = panel.querySelector('[data-photo-filter]');
+        const photos = (await listPhotos(project.projectId))
+          .filter((p) => !p.deletedAt)
+          .sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt)));
+
+        function renderGrid() {
+          const f = filterEl.value;
+          const rows = f ? photos.filter((p) => p.process === f) : photos;
+          if (rows.length === 0) {
+            gridEl.innerHTML = '<p class="col-span-3 text-sm text-slate-400 text-center py-6">사진이 없습니다.</p>';
+            return;
+          }
+          gridEl.innerHTML = rows.map((p, i) => `
+            <button data-photo="${i}" class="relative aspect-square rounded-lg overflow-hidden border border-slate-200 group">
+              <img src="${p.image.thumbnailUrl || p.image.url}" class="w-full h-full object-cover group-hover:opacity-90" alt="" />
+              ${p.process ? `<span class="absolute bottom-0 left-0 right-0 bg-black/55 text-white text-[10px] py-0.5 truncate px-1">${escapeHtml(p.process)}${p.locationDesc ? ' · ' + escapeHtml(p.locationDesc) : ''}</span>` : ''}
+            </button>`).join('');
+          gridEl._rows = rows;
+        }
+        gridEl.addEventListener('click', (e) => {
+          const btn = e.target.closest('[data-photo]');
+          if (!btn) return;
+          const rows = gridEl._rows || [];
+          openImageViewer(rows.map((p) => p.image.url), { index: Number(btn.dataset.photo) });
+        });
+        filterEl.addEventListener('change', renderGrid);
+        renderGrid();
+
+        const newBtn = panel.querySelector('[data-act="new-photo"]');
+        if (newBtn) newBtn.addEventListener('click', () => openPhotoUploader({
+          project, user, onSaved: () => renderTabPanel(),
+        }));
+      }
+
+      async function renderDrawingTab(panel) {
+        const canUp = canUploadDrawing(user);
+        panel.innerHTML = `
+          <div class="flex items-center justify-between">
+            <span class="text-sm font-bold text-navy-dark">📐 도면</span>
+            ${canUp ? '<button data-act="new-drawing" class="px-3 py-1.5 rounded-lg bg-navy text-white text-xs font-bold hover:bg-navy-light">+ 도면 업로드</button>' : ''}
+          </div>
+          <div data-drawing-list class="mt-3"><div class="text-center py-6"><span class="clms-spinner clms-spinner--navy"></span></div></div>`;
+        const listEl = panel.querySelector('[data-drawing-list]');
+        const drawings = (await listDrawings(project.projectId)).filter((d) => !d.deletedAt);
+        // 도면명별 최신 버전 표시
+        const latestVersion = {};
+        for (const d of drawings) {
+          latestVersion[d.title] = Math.max(latestVersion[d.title] || 0, d.version || 1);
+        }
+        drawings.sort((a, b) => String(a.title).localeCompare(String(b.title)) || (b.version || 1) - (a.version || 1));
+        if (drawings.length === 0) {
+          listEl.innerHTML = '<p class="text-sm text-slate-400 text-center py-6">등록된 도면이 없습니다.</p>';
+        } else {
+          listEl.innerHTML = drawings.map((d) => {
+            const isLatest = (d.version || 1) === latestVersion[d.title];
+            return `
+              <div class="border border-slate-100 rounded-lg p-3 mb-2">
+                <div class="flex items-center gap-1.5">
+                  <span class="text-[10px] font-bold px-1.5 py-0.5 rounded bg-slate-100 text-slate-600">${escapeHtml(d.category)}</span>
+                  ${isLatest ? '<span class="text-[10px] font-bold px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-700">최신</span>' : ''}
+                  <span class="font-semibold text-navy-dark text-sm truncate">${escapeHtml(d.title)} <span class="text-slate-400 font-normal">v${d.version || 1}</span></span>
+                </div>
+                <div class="text-xs text-slate-400 mt-1">${escapeHtml((d.file && d.file.name) || '')} · ${escapeHtml(d.author.name)} · ${formatDate(d.createdAt)}</div>
+                ${d.changeReason ? `<div class="text-xs text-slate-500 mt-0.5">변경 사유: ${escapeHtml(d.changeReason)}</div>` : ''}
+                ${d.file && d.file.url
+                  ? `<a href="${d.file.url}" target="_blank" rel="noopener noreferrer" class="inline-block mt-1.5 text-xs font-semibold text-navy hover:underline">도면 열기 →</a>`
+                  : '<div class="mt-1.5 text-[11px] text-slate-400">목업 모드: 파일 메타데이터만 보관됩니다.</div>'}
+              </div>`;
+          }).join('');
+        }
+        const newBtn = panel.querySelector('[data-act="new-drawing"]');
+        if (newBtn) newBtn.addEventListener('click', () => openDrawingUploader({
+          project, user, onSaved: () => renderTabPanel(),
+        }));
+      }
+
+      async function renderInspectionTab(panel) {
+        const canIns = canInspect(user);
+        panel.innerHTML = `
+          <div class="flex items-center justify-between">
+            <span class="text-sm font-bold text-navy-dark">🦺 안전·품질 점검</span>
+            ${canIns ? '<button data-act="new-inspection" class="px-3 py-1.5 rounded-lg bg-navy text-white text-xs font-bold hover:bg-navy-light">+ 점검 실시</button>' : ''}
+          </div>
+          <div data-ins-body class="mt-3"><div class="text-center py-6"><span class="clms-spinner clms-spinner--navy"></span></div></div>`;
+        const bodyEl = panel.querySelector('[data-ins-body]');
+        const inspections = (await listInspections(project.projectId))
+          .filter((i) => !i.deletedAt)
+          .sort((a, b) => String(b.inspectedAt).localeCompare(String(a.inspectedAt)));
+        const actions = (await listCorrectiveActions(project.projectId)).filter((a) => !a.deletedAt);
+        const failItems = inspections.reduce(
+          (n, i) => n + (i.checklist || []).filter((c) => c.result === 'needs_improvement').length, 0);
+        const closed = actions.filter((a) => a.status === 'closed').length;
+        const closeRate = actions.length ? Math.round((closed / actions.length) * 100) : 0;
+
+        const stat = (v, label, cls) => `
+          <div class="bg-slate-50 rounded-xl p-3 text-center">
+            <div class="text-xl font-extrabold ${cls}">${v}</div>
+            <div class="text-[11px] text-slate-400 mt-0.5">${label}</div>
+          </div>`;
+
+        bodyEl.innerHTML = `
+          <div class="grid grid-cols-3 gap-2">
+            ${stat(inspections.length, '점검 건수', 'text-navy-dark')}
+            ${stat(failItems, '미흡 항목', failItems ? 'text-red-600' : 'text-slate-400')}
+            ${stat(closeRate + '%', `시정조치 폐쇄 (${closed}/${actions.length})`, closeRate === 100 ? 'text-emerald-600' : 'text-amber-600')}
+          </div>
+          <div class="text-xs font-bold text-slate-500 mt-4 mb-1">점검 기록</div>
+          <div data-ins-list></div>
+          <div class="text-xs font-bold text-slate-500 mt-4 mb-1">시정조치</div>
+          <div data-ca-list></div>`;
+
+        const insListEl = bodyEl.querySelector('[data-ins-list]');
+        insListEl.innerHTML = inspections.length === 0
+          ? '<p class="text-sm text-slate-400 py-3">점검 기록이 없습니다.</p>'
+          : inspections.map((i) => {
+              const oi = OVERALL_INFO[i.overallResult] || OVERALL_INFO.pass;
+              return `
+                <a href="/inspection.html?project=${encodeURIComponent(project.projectId)}&id=${encodeURIComponent(i.postId)}"
+                  class="block border border-slate-100 rounded-lg p-3 mb-2 hover:bg-slate-50">
+                  <div class="flex items-center gap-1.5">
+                    <span class="text-[10px] font-bold px-1.5 py-0.5 rounded ${oi.badge}">${oi.label}</span>
+                    <span class="font-semibold text-navy-dark text-sm">${escapeHtml(i.typeLabel)}</span>
+                  </div>
+                  <div class="text-xs text-slate-400 mt-1">${escapeHtml(i.inspector.name)} · ${formatDate(i.inspectedAt)}</div>
+                </a>`;
+            }).join('');
+
+        const caListEl = bodyEl.querySelector('[data-ca-list]');
+        caListEl.innerHTML = actions.length === 0
+          ? '<p class="text-sm text-slate-400 py-3">시정조치가 없습니다.</p>'
+          : actions.map((a) => {
+              const cs = CA_STATUS[a.status] || CA_STATUS.open;
+              return `
+                <a href="/corrective-action.html?project=${encodeURIComponent(project.projectId)}&id=${encodeURIComponent(a.postId)}"
+                  class="block border border-slate-100 rounded-lg p-3 mb-2 hover:bg-slate-50">
+                  <div class="flex items-center gap-1.5">
+                    <span class="text-[10px] font-bold px-1.5 py-0.5 rounded ${cs.badge}">${cs.label}</span>
+                    <span class="font-semibold text-navy-dark text-sm truncate">${escapeHtml(a.itemName)}</span>
+                  </div>
+                  <div class="text-xs text-slate-400 mt-1">${escapeHtml(a.inspectionLabel || '')}</div>
+                </a>`;
+            }).join('');
+
+        const newBtn = panel.querySelector('[data-act="new-inspection"]');
+        if (newBtn) newBtn.addEventListener('click', () => openInspectionComposer({
+          project, user,
+          onSaved: (created) => { location.href = `/inspection.html?project=${encodeURIComponent(project.projectId)}&id=${encodeURIComponent(created.postId)}`; },
+        }));
+      }
+
+      function renderTabPanel() {
+        const panel = document.getElementById('tab-panel');
+        if (activeTab === 'notice') { renderNoticeTab(panel); return; }
+        if (POST_TAB_TYPES.includes(activeTab)) { renderPostTab(panel, activeTab); return; }
+        if (activeTab === 'log') { renderLogTab(panel); return; }
+        if (activeTab === 'photo') { renderPhotoTab(panel); return; }
+        if (activeTab === 'drawing') { renderDrawingTab(panel); return; }
+        if (activeTab === 'inspection') { renderInspectionTab(panel); return; }
+        if (activeTab !== 'overview') {
+          const tab = TABS.find((t) => t.id === activeTab);
+          panel.innerHTML = `<p class="text-sm text-slate-400 text-center py-6">"${tab.label}" 기능은 Phase ${tab.phase}에서 제공됩니다.</p>`;
+          return;
+        }
+        const b = project.basicInfo, m = project.members || {}, loc = project.location || {};
+        const memberRow = (label, val) => `
+          <div class="flex justify-between gap-3 py-1.5 border-b border-slate-50">
+            <span class="text-slate-400">${label}</span>
+            <span class="text-slate-700 font-medium text-right">${escapeHtml(val || '-')}</span>
+          </div>`;
+        panel.innerHTML = `
+          <div class="text-sm">
+            <h3 class="font-bold text-navy-dark mb-1">사업 정보</h3>
+            ${memberRow('사업유형', b.type)}
+            ${memberRow('총사업비', formatBudget(b.totalBudget))}
+            ${memberRow('회계연도', String(b.fiscalYear || '-'))}
+            ${memberRow('예산과목', b.budgetCode)}
+            ${memberRow('사업기간', `${formatDate(b.startDate)} ~ ${formatDate(b.endDate)}`)}
+            ${memberRow('위치', `${loc.address || '-'}${loc.district ? ' (' + loc.district + ')' : ''}`)}
+
+            <h3 class="font-bold text-navy-dark mb-1 mt-4">참여자</h3>
+            ${memberRow('담당자', m.officer && m.officer.name)}
+            ${memberRow('과장', m.manager && m.manager.name)}
+            ${memberRow('시공사', m.contractor && m.contractor.company ? `${m.contractor.company} (${m.contractor.chiefPhone || '-'})` : '-')}
+            ${memberRow('감리', m.supervisor && m.supervisor.company ? `${m.supervisor.company} (${m.supervisor.chiefPhone || '-'})` : '-')}
+          </div>`;
+      }
+
+      function renderAll() {
+        renderHeader();
+        renderStepper();
+        renderStageCard();
+        renderTabs();
+      }
+      renderAll();
+
+      // 탭 전환
+      document.getElementById('tabs').addEventListener('click', (e) => {
+        const btn = e.target.closest('[data-tab]');
+        if (!btn) return;
+        activeTab = btn.dataset.tab;
+        renderTabs();
+      });
+
+      // 서류 업로드
+      let pendingDocIndex = -1;
+      const fileInput = document.getElementById('doc-file');
+      document.getElementById('doc-list').addEventListener('click', (e) => {
+        const btn = e.target.closest('[data-doc]');
+        if (!btn) return;
+        pendingDocIndex = Number(btn.dataset.doc);
+        fileInput.value = '';
+        fileInput.click();
+      });
+      fileInput.addEventListener('change', async () => {
+        const file = fileInput.files[0];
+        if (!file || pendingDocIndex < 0) return;
+        const cur = project.currentStage;
+        const docName = project.stages[cur].requiredDocs[pendingDocIndex].name;
+        toast('업로드 중...', 'info');
+        try {
+          const path = `projects/${project.projectId}/stage_${cur}/${Date.now()}_${file.name}`;
+          const meta = await Storage.uploadFile(path, file);
+          meta.uploadedBy = user.uid;
+          const stages = JSON.parse(JSON.stringify(project.stages));
+          stages[cur].requiredDocs[pendingDocIndex] = { name: docName, uploaded: true, file: meta };
+          project = await Db.updateProject(project.projectId, { stages });
+          renderStageCard();
+          toast(`'${docName}' 업로드 완료${isMock ? ' (목업: 메타데이터만 기록)' : ''}`, 'success');
+        } catch (err) {
+          console.error(err);
+          toast('업로드 중 오류가 발생했습니다.', 'error');
+        }
+      });
+
+      // 단계 전환
+      document.getElementById('btn-advance').addEventListener('click', async () => {
+        if (!canAdvanceStage(project) && project.currentStage < TOTAL_STAGES) {
+          toast('필수 서류를 먼저 업로드해 주세요.', 'warning');
+          return;
+        }
+        const cur = project.currentStage;
+        const isLast = cur >= TOTAL_STAGES;
+        if (isLast && !currentStageDocsComplete(project)) {
+          toast('필수 서류를 먼저 업로드해 주세요.', 'warning');
+          return;
+        }
+        const ok = await confirmDialog({
+          title: isLast ? '사업 완료 처리' : '단계 전환',
+          message: isLast
+            ? '마지막 단계를 완료하고 사업을 종료 처리하시겠습니까?'
+            : `'${cur}. ${stageName(cur)}' 단계를 완료하고 '${cur + 1}. ${stageName(cur + 1)}' 단계로 전환하시겠습니까?`,
+          confirmText: isLast ? '완료 처리' : '전환',
+        });
+        if (!ok) return;
+        try {
+          const patch = buildStageAdvancePatch(project, '');
+          project = await Db.updateProject(project.projectId, patch);
+          renderAll();
+          toast(isLast ? '사업이 완료 처리되었습니다.' : `${project.currentStage}. ${stageName(project.currentStage)} 단계로 전환되었습니다.`, 'success');
+        } catch (err) {
+          console.error(err);
+          toast('단계 전환 중 오류가 발생했습니다.', 'error');
+        }
+      });
+
+      // 보고서 출력 (DOCX)
+      document.getElementById('btn-report').addEventListener('click', async () => {
+        toast('보고서를 생성하고 있습니다...', 'info');
+        try {
+          const { blob, filename } = await generateProjectStatusDocx(project);
+          downloadBlob(blob, filename);
+          toast('사업 추진 현황 보고서를 생성했습니다.', 'success');
+        } catch (err) {
+          console.error(err);
+          toast(err.message || '보고서 생성 중 오류가 발생했습니다.', 'error');
+        }
+      });
+
+      // JSON 내보내기
+      document.getElementById('btn-export').addEventListener('click', async () => {
+        try {
+          const envelope = await buildProjectExport(project.projectId, user);
+          downloadBlob(envelopeToBlob(envelope), `${project.projectId}_export.json`);
+          toast('사업 데이터를 내보냈습니다.', 'success');
+        } catch (err) {
+          console.error(err);
+          toast(err.message || '내보내기 중 오류가 발생했습니다.', 'error');
+        }
+      });
+    })();
+  </script>
+</body>
+</html>

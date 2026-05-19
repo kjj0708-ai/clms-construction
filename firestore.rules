@@ -1,0 +1,133 @@
+rules_version = '2';
+
+// ============================================================
+// CLMS Firestore 보안 규칙
+// Phase 2: 인증 + 역할 기반 접근 제어 (users, approval_requests)
+// Phase 3+ 에서 projects 등 컬렉션 규칙이 추가된다.
+// 명시되지 않은 컬렉션은 기본 거부(default deny)된다.
+// ============================================================
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ---- 헬퍼 함수 ----
+    function isSignedIn() {
+      return request.auth != null;
+    }
+    function profileExists() {
+      return isSignedIn()
+        && exists(/databases/$(database)/documents/users/$(request.auth.uid));
+    }
+    function myProfile() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
+    }
+    function isAdmin() {
+      return profileExists() && myProfile().role == 'system_admin';
+    }
+    function isActive() {
+      return profileExists() && myProfile().status == 'active';
+    }
+    function canEditProjects() {
+      return isActive() && myProfile().role in
+        ['system_admin', 'national_director', 'department_head', 'manager', 'officer'];
+    }
+
+    // ---- 사용자 ----
+    match /users/{uid} {
+      // 본인 또는 관리자만 조회
+      allow read: if isSignedIn() && (request.auth.uid == uid || isAdmin());
+
+      // 본인 문서만 생성 가능 — 최초 가입은 반드시 pending 상태
+      allow create: if isSignedIn()
+        && request.auth.uid == uid
+        && request.resource.data.status == 'pending'
+        && request.resource.data.role == 'pending';
+
+      // 관리자는 전체 수정 / 본인은 role·status 변경 없이 프로필만 수정
+      allow update: if isAdmin()
+        || (isSignedIn() && request.auth.uid == uid
+            && request.resource.data.role == resource.data.role
+            && request.resource.data.status == resource.data.status);
+
+      allow delete: if isAdmin();
+    }
+
+    // ---- 가입 승인 요청 ----
+    match /approval_requests/{requestId} {
+      // 관리자 또는 신청 당사자만 조회
+      allow read: if isAdmin()
+        || (isSignedIn() && resource.data.userId == request.auth.uid);
+
+      // 본인 신청서만 생성
+      allow create: if isSignedIn()
+        && request.resource.data.userId == request.auth.uid
+        && request.resource.data.status == 'pending';
+
+      // 관리자는 처리(승인·반려), 당사자는 대기 중일 때 재신청 수정
+      allow update: if isAdmin()
+        || (isSignedIn() && resource.data.userId == request.auth.uid
+            && resource.data.status == 'pending');
+
+      allow delete: if isAdmin();
+    }
+
+    // ---- 사업 ----
+    // Phase 3: 활성 사용자 조회 허용(세부 접근은 클라이언트 projects.js 가 필터).
+    //          등록·수정은 발주처 역할만, 삭제는 관리자만.
+    match /projects/{projectId} {
+      allow read: if isActive();
+      allow create, update: if canEditProjects();
+      allow delete: if isAdmin();
+    }
+
+    // ---- 사업 ID 채번 카운터 ----
+    match /counters/{counterId} {
+      allow read: if isActive();
+      allow write: if canEditProjects();
+    }
+
+    // ---- 공지사항 (사업 하위 컬렉션) ----
+    match /projects/{projectId}/notices/{noticeId} {
+      allow read: if isActive();
+      // 작성은 공무원, 수정은 활성 사용자 허용
+      // (제목·본문 편집은 작성자/관리자만 — 앱에서 강제, readBy·commentCount 갱신은 전체 허용)
+      allow create: if canEditProjects();
+      allow update: if isActive();
+      allow delete: if isAdmin();
+
+      // 댓글
+      match /comments/{commentId} {
+        allow read: if isActive();
+        allow create: if isActive();
+        allow update: if isActive()
+          && (isAdmin() || resource.data.author.uid == request.auth.uid);
+        allow delete: if isAdmin();
+      }
+    }
+
+    // ---- 협업 게시글 (공사지시서·질의·회의록·설계변경 등 사업 하위 컬렉션) ----
+    // 유형별 작성 권한은 앱(post-types.js)에서 강제한다.
+    match /projects/{projectId}/{collection}/{postId} {
+      allow read: if isActive();
+      allow create, update: if isActive();
+      allow delete: if isAdmin();
+
+      match /comments/{commentId} {
+        allow read: if isActive();
+        allow create: if isActive();
+        allow update: if isActive()
+          && (isAdmin() || resource.data.author.uid == request.auth.uid);
+        allow delete: if isAdmin();
+      }
+    }
+
+    // ---- 사용자 알림 ----
+    match /users/{uid}/notifications/{notificationId} {
+      // 본인만 조회·수정(읽음 처리)
+      allow read, update: if isSignedIn() && request.auth.uid == uid;
+      // 알림 fan-out 을 위해 다른 사용자가 생성 가능 (운영 시 Cloud Functions 권장)
+      allow create: if isSignedIn();
+      allow delete: if isSignedIn() && request.auth.uid == uid;
+    }
+  }
+}

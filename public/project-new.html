@@ -1,0 +1,349 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <meta name="theme-color" content="#1a3a5c" />
+  <meta name="description" content="시설공사 통합관리시스템 — 사업 등록" />
+  <title>사업 등록 — CLMS</title>
+
+  <link rel="manifest" href="/manifest.json" />
+  <link rel="icon" href="/icons/favicon-32.png" type="image/png" />
+  <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png" />
+
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/pretendard@1.3.9/dist/web/static/pretendard.min.css" />
+  <link rel="stylesheet" href="/css/styles.css" />
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="/js/tailwind-config.js"></script>
+</head>
+<body class="min-h-full bg-slate-100">
+  <div id="header"></div>
+
+  <main class="max-w-xl mx-auto px-4 py-6 clms-fade-in">
+    <a href="/projects.html" class="text-slate-400 hover:text-navy text-sm">← 사업 목록</a>
+    <h1 class="text-xl font-bold text-navy-dark mt-1">신규 사업 등록</h1>
+
+    <!-- 단계 표시 -->
+    <ol id="steps" class="flex items-center gap-1 mt-4"></ol>
+
+    <div id="content" hidden class="bg-white rounded-2xl border border-slate-200 p-5 mt-4">
+      <form id="wizard" novalidate>
+        <!-- 1. 기본정보 -->
+        <section data-step="1">
+          <h2 class="font-bold text-navy-dark">1. 기본정보</h2>
+          <div class="space-y-3 mt-3">
+            <div>
+              <label class="block text-sm font-semibold text-slate-700 mb-1">사업명 <span class="text-red-500">*</span></label>
+              <input name="name" type="text" placeholder="예: 행복로 도로개설공사"
+                class="w-full border border-slate-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-navy/30" />
+            </div>
+            <div>
+              <label class="block text-sm font-semibold text-slate-700 mb-1">사업유형 <span class="text-red-500">*</span></label>
+              <select name="type" class="w-full border border-slate-200 rounded-lg px-3 py-2.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-navy/30">
+                <option value="">선택하세요</option>
+              </select>
+            </div>
+            <div>
+              <label class="block text-sm font-semibold text-slate-700 mb-1">발주부서 <span class="text-red-500">*</span></label>
+              <input name="department" type="text" placeholder="예: 도시주택국 건축과"
+                class="w-full border border-slate-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-navy/30" />
+            </div>
+            <div>
+              <label class="block text-sm font-semibold text-slate-700 mb-1">부서코드 <span class="text-red-500">*</span></label>
+              <input name="deptCode" type="text" placeholder="예: DOSI" maxlength="8"
+                class="w-full border border-slate-200 rounded-lg px-3 py-2.5 text-sm uppercase focus:outline-none focus:ring-2 focus:ring-navy/30" />
+              <p class="text-[11px] text-slate-400 mt-0.5">사업 ID 채번에 사용됩니다. (예: 2026-DOSI-001)</p>
+            </div>
+          </div>
+        </section>
+
+        <!-- 2. 사업위치 -->
+        <section data-step="2" hidden>
+          <h2 class="font-bold text-navy-dark">2. 사업위치</h2>
+          <div class="space-y-3 mt-3">
+            <div>
+              <label class="block text-sm font-semibold text-slate-700 mb-1">주소 <span class="text-red-500">*</span></label>
+              <input name="address" type="text" placeholder="예: ○○시 ○○구 행복로 일원"
+                class="w-full border border-slate-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-navy/30" />
+            </div>
+            <div>
+              <label class="block text-sm font-semibold text-slate-700 mb-1">동·통·반</label>
+              <input name="district" type="text" placeholder="예: ○○동"
+                class="w-full border border-slate-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-navy/30" />
+            </div>
+            <p class="text-[11px] text-slate-400">지도 핀 지정은 향후 업데이트에서 제공됩니다.</p>
+          </div>
+        </section>
+
+        <!-- 3. 예산정보 -->
+        <section data-step="3" hidden>
+          <h2 class="font-bold text-navy-dark">3. 예산정보</h2>
+          <div class="space-y-3 mt-3">
+            <div>
+              <label class="block text-sm font-semibold text-slate-700 mb-1">총사업비 (원) <span class="text-red-500">*</span></label>
+              <input name="totalBudget" type="number" min="0" placeholder="예: 4800000000"
+                class="w-full border border-slate-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-navy/30" />
+              <p id="budget-preview" class="text-[11px] text-navy mt-0.5"></p>
+            </div>
+            <div>
+              <label class="block text-sm font-semibold text-slate-700 mb-1">회계연도 <span class="text-red-500">*</span></label>
+              <input name="fiscalYear" type="number" min="2000" max="2100"
+                class="w-full border border-slate-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-navy/30" />
+            </div>
+            <div>
+              <label class="block text-sm font-semibold text-slate-700 mb-1">예산과목</label>
+              <input name="budgetCode" type="text" placeholder="예: 411-01"
+                class="w-full border border-slate-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-navy/30" />
+            </div>
+          </div>
+        </section>
+
+        <!-- 4. 사업기간 -->
+        <section data-step="4" hidden>
+          <h2 class="font-bold text-navy-dark">4. 사업기간</h2>
+          <div class="space-y-3 mt-3">
+            <div>
+              <label class="block text-sm font-semibold text-slate-700 mb-1">착수 예정일 <span class="text-red-500">*</span></label>
+              <input name="startDate" type="date"
+                class="w-full border border-slate-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-navy/30" />
+            </div>
+            <div>
+              <label class="block text-sm font-semibold text-slate-700 mb-1">준공 예정일 <span class="text-red-500">*</span></label>
+              <input name="endDate" type="date"
+                class="w-full border border-slate-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-navy/30" />
+            </div>
+          </div>
+        </section>
+
+        <!-- 5. 참여자 -->
+        <section data-step="5" hidden>
+          <h2 class="font-bold text-navy-dark">5. 참여자 등록</h2>
+          <div class="space-y-3 mt-3">
+            <div>
+              <label class="block text-sm font-semibold text-slate-700 mb-1">담당자 <span class="text-red-500">*</span></label>
+              <select name="officerUid" class="w-full border border-slate-200 rounded-lg px-3 py-2.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-navy/30">
+                <option value="">선택하세요</option>
+              </select>
+            </div>
+            <div>
+              <label class="block text-sm font-semibold text-slate-700 mb-1">과장</label>
+              <select name="managerUid" class="w-full border border-slate-200 rounded-lg px-3 py-2.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-navy/30">
+                <option value="">선택하세요</option>
+              </select>
+            </div>
+            <div class="border-t border-slate-100 pt-3">
+              <p class="text-sm font-semibold text-slate-700 mb-1.5">시공사 <span class="text-xs font-normal text-slate-400">(선택 — 계약 단계에서 등록 가능)</span></p>
+              <input name="contractorCompany" type="text" placeholder="시공사명"
+                class="w-full border border-slate-200 rounded-lg px-3 py-2.5 text-sm mb-2 focus:outline-none focus:ring-2 focus:ring-navy/30" />
+              <input name="contractorPhone" type="tel" placeholder="현장소장 연락처 (010-0000-0000)"
+                class="w-full border border-slate-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-navy/30" />
+            </div>
+            <div class="border-t border-slate-100 pt-3">
+              <p class="text-sm font-semibold text-slate-700 mb-1.5">감리 <span class="text-xs font-normal text-slate-400">(선택)</span></p>
+              <input name="supervisorCompany" type="text" placeholder="감리사명"
+                class="w-full border border-slate-200 rounded-lg px-3 py-2.5 text-sm mb-2 focus:outline-none focus:ring-2 focus:ring-navy/30" />
+              <input name="supervisorPhone" type="tel" placeholder="책임감리 연락처 (010-0000-0000)"
+                class="w-full border border-slate-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-navy/30" />
+            </div>
+          </div>
+        </section>
+      </form>
+
+      <div class="flex items-center justify-between gap-2 mt-5">
+        <button id="btn-temp" class="text-xs text-slate-400 hover:text-navy">임시저장</button>
+        <div class="flex gap-2">
+          <button id="btn-prev" class="px-4 py-2.5 rounded-xl font-medium text-slate-500 bg-slate-100 hover:bg-slate-200" hidden>이전</button>
+          <button id="btn-next" class="px-5 py-2.5 rounded-xl font-bold text-white bg-navy hover:bg-navy-light">다음</button>
+          <button id="btn-submit" class="px-5 py-2.5 rounded-xl font-bold text-white bg-navy hover:bg-navy-light" hidden>사업 등록</button>
+        </div>
+      </div>
+    </div>
+
+    <div id="loading" class="bg-white rounded-2xl border border-slate-200 p-10 text-center mt-4">
+      <span class="clms-spinner clms-spinner--navy"></span>
+      <p class="text-sm text-slate-400 mt-2">불러오는 중...</p>
+    </div>
+  </main>
+  <div id="footer"></div>
+
+  <script type="module">
+    import '/js/app.js';
+    import { mountAppHeader, mountFooter, toast } from '/js/components/layout.js';
+    import { requireRole } from '/js/auth.js';
+    import { Db, nowIso } from '/js/backend.js';
+    import { PROJECT_TYPES, PROJECT_EDITOR_ROLES, roleLabel } from '/js/constants.js';
+    import { buildInitialStages } from '/js/stages.js';
+    import { formatBudget } from '/js/projects.js';
+
+    const DRAFT_KEY = 'clms.project_draft';
+    const STEP_LABELS = ['기본정보', '사업위치', '예산정보', '사업기간', '참여자'];
+    let step = 1;
+
+    (async () => {
+      const user = await requireRole(PROJECT_EDITOR_ROLES);
+      if (!user) return;
+
+      mountAppHeader(document.getElementById('header'), { user });
+      mountFooter(document.getElementById('footer'));
+
+      const form = document.getElementById('wizard');
+
+      // 사업유형 옵션
+      const typeSel = form.elements.type;
+      PROJECT_TYPES.forEach((t) => typeSel.insertAdjacentHTML('beforeend', `<option value="${t}">${t}</option>`));
+      form.elements.fiscalYear.value = new Date().getFullYear();
+
+      // 참여자 후보 (활성 공무원)
+      const officials = (await Db.listUsers({ status: 'active' }))
+        .filter((u) => ['system_admin', 'national_director', 'department_head', 'manager', 'officer'].includes(u.role));
+      const officialMap = {};
+      for (const u of officials) {
+        officialMap[u.uid] = u;
+        const opt = `<option value="${u.uid}">${u.name} (${roleLabel(u.role)}) · ${u.department || ''}</option>`;
+        form.elements.officerUid.insertAdjacentHTML('beforeend', opt);
+        form.elements.managerUid.insertAdjacentHTML('beforeend', opt);
+      }
+      // 기본값: 현재 사용자가 공무원이면 담당자로
+      if (officialMap[user.uid]) form.elements.officerUid.value = user.uid;
+      if (user.department) form.elements.department.value = user.department;
+
+      // 임시저장 복원
+      try {
+        const draft = JSON.parse(localStorage.getItem(DRAFT_KEY) || 'null');
+        if (draft) {
+          for (const [k, v] of Object.entries(draft)) {
+            if (form.elements[k]) form.elements[k].value = v;
+          }
+          toast('임시저장된 내용을 불러왔습니다.', 'info');
+        }
+      } catch { /* noop */ }
+
+      document.getElementById('loading').hidden = true;
+      document.getElementById('content').hidden = false;
+      renderSteps();
+      showStep(1);
+
+      // 예산 미리보기
+      form.elements.totalBudget.addEventListener('input', () => {
+        const v = Number(form.elements.totalBudget.value);
+        document.getElementById('budget-preview').textContent = v ? formatBudget(v) : '';
+      });
+
+      function renderSteps() {
+        document.getElementById('steps').innerHTML = STEP_LABELS.map((label, i) => {
+          const n = i + 1;
+          const active = n === step;
+          const done = n < step;
+          return `
+            <li class="flex-1 flex flex-col items-center gap-1">
+              <div class="w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold
+                ${active ? 'bg-navy text-white' : done ? 'bg-emerald-500 text-white' : 'bg-slate-200 text-slate-500'}">
+                ${done ? '✓' : n}
+              </div>
+              <span class="text-[10px] ${active ? 'text-navy font-bold' : 'text-slate-400'}">${label}</span>
+            </li>`;
+        }).join('');
+      }
+
+      function showStep(n) {
+        step = n;
+        form.querySelectorAll('[data-step]').forEach((s) => {
+          s.hidden = Number(s.dataset.step) !== n;
+        });
+        document.getElementById('btn-prev').hidden = n === 1;
+        document.getElementById('btn-next').hidden = n === 5;
+        document.getElementById('btn-submit').hidden = n !== 5;
+        renderSteps();
+        window.scrollTo(0, 0);
+      }
+
+      function validateStep(n) {
+        const required = {
+          1: [['name', '사업명'], ['type', '사업유형'], ['department', '발주부서'], ['deptCode', '부서코드']],
+          2: [['address', '주소']],
+          3: [['totalBudget', '총사업비'], ['fiscalYear', '회계연도']],
+          4: [['startDate', '착수 예정일'], ['endDate', '준공 예정일']],
+          5: [['officerUid', '담당자']],
+        }[n] || [];
+        for (const [field, label] of required) {
+          if (!String(form.elements[field].value || '').trim()) {
+            toast(`${label}을(를) 입력해 주세요.`, 'warning');
+            form.elements[field].focus();
+            return false;
+          }
+        }
+        if (n === 1 && !/^[A-Za-z0-9]{2,8}$/.test(form.elements.deptCode.value.trim())) {
+          toast('부서코드는 영문·숫자 2~8자로 입력해 주세요.', 'warning');
+          return false;
+        }
+        if (n === 4) {
+          if (form.elements.endDate.value < form.elements.startDate.value) {
+            toast('준공 예정일은 착수 예정일 이후여야 합니다.', 'warning');
+            return false;
+          }
+        }
+        return true;
+      }
+
+      function saveDraft() {
+        const data = Object.fromEntries(new FormData(form).entries());
+        localStorage.setItem(DRAFT_KEY, JSON.stringify(data));
+      }
+
+      document.getElementById('btn-next').addEventListener('click', () => {
+        if (!validateStep(step)) return;
+        saveDraft();
+        showStep(step + 1);
+      });
+      document.getElementById('btn-prev').addEventListener('click', () => showStep(step - 1));
+      document.getElementById('btn-temp').addEventListener('click', () => {
+        saveDraft();
+        toast('임시저장되었습니다.', 'success');
+      });
+
+      document.getElementById('btn-submit').addEventListener('click', async () => {
+        for (let n = 1; n <= 5; n++) {
+          if (!validateStep(n)) { showStep(n); return; }
+        }
+        const f = Object.fromEntries(new FormData(form).entries());
+        const officer = officialMap[f.officerUid];
+        const manager = officialMap[f.managerUid];
+
+        const data = {
+          deptCode: f.deptCode.trim().toUpperCase(),
+          basicInfo: {
+            name: f.name.trim(), type: f.type, department: f.department.trim(),
+            startDate: f.startDate, endDate: f.endDate,
+            totalBudget: Number(f.totalBudget) || 0,
+            fiscalYear: Number(f.fiscalYear), budgetCode: (f.budgetCode || '').trim(),
+          },
+          location: { address: f.address.trim(), lat: null, lng: null, district: (f.district || '').trim() },
+          currentStage: 1,
+          stages: buildInitialStages(),
+          members: {
+            officer: officer ? { uid: officer.uid, name: officer.name, phone: officer.contact || '', email: officer.email || '' } : null,
+            manager: manager ? { uid: manager.uid, name: manager.name } : null,
+            departmentHead: null,
+            contractor: { company: (f.contractorCompany || '').trim(), chiefPhone: (f.contractorPhone || '').trim(), chiefUid: null, staffUids: [] },
+            supervisor: { company: (f.supervisorCompany || '').trim(), chiefPhone: (f.supervisorPhone || '').trim(), chiefUid: null, staffUids: [] },
+          },
+          createdAt: nowIso(), createdBy: user.uid, updatedAt: nowIso(), status: 'active',
+        };
+
+        const submitBtn = document.getElementById('btn-submit');
+        submitBtn.disabled = true;
+        try {
+          const project = await Db.createProject(data);
+          localStorage.removeItem(DRAFT_KEY);
+          toast(`사업이 등록되었습니다. (${project.projectId})`, 'success');
+          setTimeout(() => location.href = '/project-detail.html?id=' + encodeURIComponent(project.projectId), 700);
+        } catch (err) {
+          console.error(err);
+          toast('사업 등록 중 오류가 발생했습니다.', 'error');
+          submitBtn.disabled = false;
+        }
+      });
+    })();
+  </script>
+</body>
+</html>

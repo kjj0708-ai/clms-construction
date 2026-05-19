@@ -1,0 +1,327 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <meta name="theme-color" content="#1a3a5c" />
+  <meta name="description" content="시설공사 통합관리시스템 — 로그인" />
+  <title>로그인 — 시설공사 통합관리시스템</title>
+
+  <link rel="manifest" href="/manifest.json" />
+  <link rel="icon" href="/icons/favicon-32.png" type="image/png" />
+  <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="CLMS" />
+
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/pretendard@1.3.9/dist/web/static/pretendard.min.css" />
+  <link rel="stylesheet" href="/css/styles.css" />
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="/js/tailwind-config.js"></script>
+</head>
+<body class="min-h-full bg-gradient-to-b from-navy to-navy-dark">
+  <main class="min-h-screen flex flex-col items-center justify-center px-5 py-10">
+    <div class="w-full max-w-sm clms-fade-in">
+
+      <div class="text-center text-white mb-6">
+        <div id="brand" class="flex items-center justify-center gap-2"></div>
+        <h1 class="mt-2 text-lg font-bold">시설공사 통합관리시스템</h1>
+        <p class="text-xs text-white/60 mt-0.5">예산편성부터 하자보수까지, 사업의 모든 이력을 한 곳에</p>
+      </div>
+
+      <!-- 비활성 계정 안내 -->
+      <div id="blocked-msg" hidden
+        class="bg-red-50 border border-red-200 text-red-700 text-sm rounded-xl p-3 mb-4">
+        비활성화된 계정입니다. 시스템 관리자에게 문의해 주세요.
+      </div>
+
+      <div class="bg-white rounded-2xl shadow-xl p-6">
+
+        <!-- 메인: 로그인 방식 선택 -->
+        <div id="view-main">
+          <h2 class="text-base font-bold text-navy-dark">로그인</h2>
+          <p class="text-xs text-slate-400 mt-0.5 mb-4">편한 방식을 선택하세요</p>
+
+          <button id="btn-google"
+            class="w-full flex items-center justify-center gap-2.5 border border-slate-200 rounded-xl py-3 font-semibold text-slate-700 hover:bg-slate-50 transition-colors">
+            <svg width="20" height="20" viewBox="0 0 48 48" aria-hidden="true">
+              <path fill="#EA4335" d="M24 9.5c3.5 0 6.6 1.2 9.1 3.6l6.8-6.8C35.6 2.4 30.1 0 24 0 14.6 0 6.5 5.4 2.6 13.2l7.9 6.2C12.4 13.6 17.7 9.5 24 9.5z"/>
+              <path fill="#4285F4" d="M46.1 24.6c0-1.6-.1-3.1-.4-4.6H24v9.1h12.4c-.5 2.9-2.2 5.3-4.7 7l7.6 5.9c4.4-4.1 7-10.1 7-17.4z"/>
+              <path fill="#FBBC05" d="M10.5 28.4c-.5-1.4-.8-3-.8-4.4s.3-3 .8-4.4l-7.9-6.2C1 16.4 0 20.1 0 24s1 7.6 2.6 10.6l7.9-6.2z"/>
+              <path fill="#34A853" d="M24 48c6.5 0 11.9-2.1 15.9-5.8l-7.6-5.9c-2.1 1.4-4.9 2.3-8.3 2.3-6.3 0-11.6-4.1-13.5-9.9l-7.9 6.2C6.5 42.6 14.6 48 24 48z"/>
+            </svg>
+            구글 로그인
+          </button>
+
+          <button id="btn-simple"
+            class="w-full flex items-center justify-center gap-2 bg-navy text-white rounded-xl py-3 font-semibold hover:bg-navy-light transition-colors mt-3">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/>
+            </svg>
+            간편 로그인 (이메일 · 휴대폰)
+          </button>
+
+          <p class="text-[11px] text-slate-400 text-center mt-4 leading-relaxed">
+            처음 방문이라면 로그인 후 정보 입력이 필요합니다.<br />
+            입력하신 정보는 관리자 승인 후 사용할 수 있습니다.
+          </p>
+        </div>
+
+        <!-- 간편 로그인 -->
+        <div id="view-simple" hidden>
+          <button id="btn-back" class="text-sm text-slate-400 hover:text-navy mb-2">← 뒤로</button>
+
+          <div class="flex gap-1 bg-slate-100 rounded-lg p-1 mb-4">
+            <button data-tab="email" class="flex-1 py-1.5 rounded-md text-sm font-semibold">이메일</button>
+            <button data-tab="phone" class="flex-1 py-1.5 rounded-md text-sm font-semibold">휴대폰</button>
+          </div>
+
+          <!-- 이메일 -->
+          <form id="panel-email" class="space-y-2.5" novalidate>
+            <input name="email" type="email" placeholder="이메일" autocomplete="email"
+              class="w-full border border-slate-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-navy/30" />
+            <input name="password" type="password" placeholder="비밀번호" autocomplete="current-password"
+              class="w-full border border-slate-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-navy/30" />
+            <input name="passwordConfirm" type="password" placeholder="비밀번호 확인" autocomplete="new-password" hidden
+              class="w-full border border-slate-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-navy/30" />
+            <p id="email-hint" class="text-[11px] text-slate-400" hidden>비밀번호는 8자 이상, 영문과 숫자를 포함해야 합니다.</p>
+            <button type="submit" id="email-submit"
+              class="w-full bg-navy text-white rounded-lg py-2.5 font-semibold hover:bg-navy-light">로그인</button>
+            <p class="text-center text-xs text-slate-400">
+              <span id="email-toggle-text">계정이 없으신가요?</span>
+              <button type="button" id="email-toggle" class="text-navy font-semibold ml-1">회원가입</button>
+            </p>
+          </form>
+
+          <!-- 휴대폰 -->
+          <form id="panel-phone" class="space-y-2.5" novalidate hidden>
+            <div class="flex gap-2">
+              <input name="phone" type="tel" placeholder="010-0000-0000" autocomplete="tel"
+                class="flex-1 border border-slate-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-navy/30" />
+              <button type="button" id="phone-send"
+                class="shrink-0 px-3 rounded-lg bg-slate-100 text-navy text-sm font-semibold hover:bg-slate-200">인증번호</button>
+            </div>
+            <div id="phone-code-row" hidden>
+              <input name="code" type="text" inputmode="numeric" maxlength="6" placeholder="인증번호 6자리"
+                class="w-full border border-slate-200 rounded-lg px-3 py-2.5 text-sm tracking-widest focus:outline-none focus:ring-2 focus:ring-navy/30" />
+            </div>
+            <button type="submit" id="phone-submit" disabled
+              class="w-full bg-navy text-white rounded-lg py-2.5 font-semibold hover:bg-navy-light disabled:opacity-40">확인</button>
+            <div id="recaptcha-container"></div>
+          </form>
+        </div>
+      </div>
+
+      <!-- 데모 모드 -->
+      <div id="demo-panel" hidden class="bg-white/10 border border-white/15 rounded-2xl p-4 mt-4">
+        <div class="text-gold text-xs font-bold">🧪 데모 모드</div>
+        <p class="text-[11px] text-white/60 mt-0.5 mb-3">
+          역할별 빠른 로그인입니다. 일반 인증 흐름(구글·이메일·휴대폰)도 그대로 동작합니다.
+        </p>
+        <div id="demo-roles" class="grid grid-cols-2 gap-2"></div>
+        <p class="text-[11px] text-white/50 mt-3 leading-relaxed">
+          관리자 로그인 — 이메일 <b class="text-white/80">admin@clms.local</b> / 비밀번호 <b class="text-white/80">admin1234</b>
+        </p>
+      </div>
+
+      <div class="text-center mt-5">
+        <a href="/test-components.html" class="text-xs text-white/50 hover:text-white/80 underline">공통 컴포넌트 테스트 페이지</a>
+      </div>
+    </div>
+  </main>
+
+  <script type="module">
+    import './js/app.js';
+    import { logoSvg, toast } from './js/components/layout.js';
+    import { escapeHtml } from './js/components/link-renderer.js';
+    import { Auth, isMock, AuthError, DEMO_GOOGLE_ACCOUNTS, DEMO_ROLE_KEYS, normalizePhone } from './js/backend.js';
+    import { resolveState, routeAfterAuth, destinationFor } from './js/auth.js';
+    import { ROLES } from './js/constants.js';
+
+    document.getElementById('brand').innerHTML =
+      logoSvg(36, '#c9a961') + '<span class="text-2xl font-extrabold tracking-tight">CLMS</span>';
+
+    // 이미 로그인된 경우 라우팅 — 비활성 계정은 반려 사유 표시
+    (async () => {
+      const st = await resolveState();
+      if (st.state === 'inactive') {
+        const msg = document.getElementById('blocked-msg');
+        msg.hidden = false;
+        if (st.user && st.user.rejectionReason) {
+          msg.innerHTML =
+            '가입 신청이 <b>반려</b>되었습니다.<br />사유: ' +
+            escapeHtml(st.user.rejectionReason) +
+            '<br />문의는 시스템 관리자에게 부탁드립니다.';
+        }
+      } else if (st.state !== 'no-auth') {
+        location.replace(destinationFor(st.state));
+      }
+    })();
+
+    async function proceed() {
+      const { dest } = await routeAfterAuth();
+      location.href = dest;
+    }
+    function handleError(err) {
+      console.error(err);
+      const msg = err instanceof AuthError ? err.message
+        : (err && err.code ? '인증 오류: ' + err.code : '처리 중 오류가 발생했습니다.');
+      toast(msg, 'error', 4000);
+    }
+
+    /* ---- 뷰 전환 ---- */
+    const viewMain = document.getElementById('view-main');
+    const viewSimple = document.getElementById('view-simple');
+    document.getElementById('btn-simple').addEventListener('click', () => {
+      viewMain.hidden = true; viewSimple.hidden = false;
+    });
+    document.getElementById('btn-back').addEventListener('click', () => {
+      viewSimple.hidden = true; viewMain.hidden = false;
+    });
+
+    /* ---- 탭 ---- */
+    const panelEmail = document.getElementById('panel-email');
+    const panelPhone = document.getElementById('panel-phone');
+    function setTab(tab) {
+      panelEmail.hidden = tab !== 'email';
+      panelPhone.hidden = tab !== 'phone';
+      document.querySelectorAll('[data-tab]').forEach((b) => {
+        const on = b.dataset.tab === tab;
+        b.classList.toggle('bg-white', on);
+        b.classList.toggle('shadow-sm', on);
+        b.classList.toggle('text-navy', on);
+        b.classList.toggle('text-slate-400', !on);
+      });
+    }
+    document.querySelectorAll('[data-tab]').forEach((b) =>
+      b.addEventListener('click', () => setTab(b.dataset.tab)));
+    setTab('email');
+
+    /* ---- 구글 로그인 ---- */
+    document.getElementById('btn-google').addEventListener('click', async () => {
+      if (isMock) { openGooglePicker(); return; }
+      try { await Auth.signInWithGoogle(); await proceed(); }
+      catch (e) { handleError(e); }
+    });
+
+    function openGooglePicker() {
+      const overlay = document.createElement('div');
+      overlay.className = 'fixed inset-0 z-[10000] flex items-center justify-center bg-black/50 p-4';
+      overlay.innerHTML = `
+        <div class="bg-white rounded-2xl shadow-xl w-full max-w-xs p-5 clms-fade-in">
+          <h3 class="font-bold text-navy-dark">구글 계정 선택 <span class="text-xs font-normal text-slate-400">(데모)</span></h3>
+          <div class="mt-3 space-y-1.5">
+            ${DEMO_GOOGLE_ACCOUNTS.map((a) => `
+              <button data-email="${a.email}" data-name="${a.name}"
+                class="w-full text-left px-3 py-2 rounded-lg border border-slate-200 hover:bg-slate-50">
+                <div class="text-sm font-semibold text-navy-dark">${a.name}</div>
+                <div class="text-xs text-slate-400">${a.email}</div>
+              </button>`).join('')}
+          </div>
+          <div class="mt-3 flex gap-2">
+            <input id="g-custom" type="email" placeholder="다른 이메일 입력"
+              class="flex-1 border border-slate-200 rounded-lg px-2.5 py-2 text-sm" />
+            <button id="g-custom-go" class="px-3 rounded-lg bg-navy text-white text-sm font-semibold">확인</button>
+          </div>
+          <button id="g-cancel" class="w-full mt-3 text-sm text-slate-400">취소</button>
+        </div>`;
+      async function loginGoogle(email, name) {
+        overlay.remove();
+        try { await Auth.signInWithGoogle({ mockAccount: { email, name: name || email.split('@')[0] } }); await proceed(); }
+        catch (e) { handleError(e); }
+      }
+      overlay.addEventListener('click', (e) => {
+        if (e.target === overlay || e.target.id === 'g-cancel') { overlay.remove(); return; }
+        const acc = e.target.closest('[data-email]');
+        if (acc) loginGoogle(acc.dataset.email, acc.dataset.name);
+        if (e.target.id === 'g-custom-go') {
+          const v = overlay.querySelector('#g-custom').value.trim();
+          if (/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(v)) loginGoogle(v);
+          else toast('이메일 형식을 확인해 주세요.', 'warning');
+        }
+      });
+      document.body.appendChild(overlay);
+    }
+
+    /* ---- 이메일 로그인/회원가입 ---- */
+    let emailMode = 'login';
+    const pwConfirm = panelEmail.elements.passwordConfirm;
+    const emailHint = document.getElementById('email-hint');
+    document.getElementById('email-toggle').addEventListener('click', () => {
+      emailMode = emailMode === 'login' ? 'signup' : 'login';
+      const signup = emailMode === 'signup';
+      pwConfirm.hidden = !signup;
+      emailHint.hidden = !signup;
+      document.getElementById('email-submit').textContent = signup ? '회원가입' : '로그인';
+      document.getElementById('email-toggle').textContent = signup ? '로그인' : '회원가입';
+      document.getElementById('email-toggle-text').textContent = signup ? '이미 계정이 있으신가요?' : '계정이 없으신가요?';
+    });
+
+    panelEmail.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const email = panelEmail.elements.email.value.trim();
+      const password = panelEmail.elements.password.value;
+      if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) { toast('이메일 형식을 확인해 주세요.', 'warning'); return; }
+      if (!password) { toast('비밀번호를 입력해 주세요.', 'warning'); return; }
+      try {
+        if (emailMode === 'signup') {
+          if (password.length < 8 || !/[a-zA-Z]/.test(password) || !/\d/.test(password)) {
+            toast('비밀번호는 8자 이상, 영문과 숫자를 포함해야 합니다.', 'warning'); return;
+          }
+          if (password !== pwConfirm.value) { toast('비밀번호가 일치하지 않습니다.', 'warning'); return; }
+          await Auth.signUpWithEmail(email, password);
+          toast('가입되었습니다. 정보 입력을 진행해 주세요.', 'success');
+        } else {
+          await Auth.signInWithEmail(email, password);
+        }
+        await proceed();
+      } catch (err) { handleError(err); }
+    });
+
+    /* ---- 휴대폰 로그인 ---- */
+    let phoneHandle = null;
+    document.getElementById('phone-send').addEventListener('click', async () => {
+      const phone = panelPhone.elements.phone.value.trim();
+      if (!/^01[016789][-\s]?\d{3,4}[-\s]?\d{4}$/.test(phone)) {
+        toast('휴대폰 번호 형식을 확인해 주세요.', 'warning'); return;
+      }
+      try {
+        phoneHandle = await Auth.startPhoneSignIn(normalizePhone(phone), 'recaptcha-container');
+        document.getElementById('phone-code-row').hidden = false;
+        document.getElementById('phone-submit').disabled = false;
+        if (phoneHandle && phoneHandle._mock) {
+          toast('데모 인증번호: ' + phoneHandle.code, 'info', 6000);
+        } else {
+          toast('인증번호를 발송했습니다.', 'success');
+        }
+      } catch (err) { handleError(err); }
+    });
+    panelPhone.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      if (!phoneHandle) { toast('먼저 인증번호를 발송해 주세요.', 'warning'); return; }
+      const code = panelPhone.elements.code.value.trim();
+      if (!/^\d{6}$/.test(code)) { toast('인증번호 6자리를 입력해 주세요.', 'warning'); return; }
+      try { await Auth.confirmPhoneCode(phoneHandle, code); await proceed(); }
+      catch (err) { handleError(err); }
+    });
+
+    /* ---- 데모 빠른 로그인 ---- */
+    if (isMock) {
+      const panel = document.getElementById('demo-panel');
+      panel.hidden = false;
+      const grid = document.getElementById('demo-roles');
+      grid.innerHTML = DEMO_ROLE_KEYS.map((key) => `
+        <button data-role="${key}" class="text-left bg-white/90 hover:bg-white rounded-lg px-3 py-2">
+          <div class="text-sm font-bold text-navy-dark">${ROLES[key].label}</div>
+          <div class="text-[10px] text-slate-400">${key}</div>
+        </button>`).join('');
+      grid.addEventListener('click', (e) => {
+        const btn = e.target.closest('[data-role]');
+        if (!btn) return;
+        Auth.devQuickLogin(btn.dataset.role);
+        location.href = '/dashboard.html';
+      });
+    }
+  </script>
+</body>
+</html>

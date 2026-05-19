@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <meta name="theme-color" content="#1a3a5c" />
+  <meta name="description" content="시설공사 통합관리시스템 — 사업 목록" />
+  <title>사업 목록 — CLMS</title>
+
+  <link rel="manifest" href="/manifest.json" />
+  <link rel="icon" href="/icons/favicon-32.png" type="image/png" />
+  <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png" />
+
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/pretendard@1.3.9/dist/web/static/pretendard.min.css" />
+  <link rel="stylesheet" href="/css/styles.css" />
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="/js/tailwind-config.js"></script>
+</head>
+<body class="min-h-full bg-slate-100">
+  <div id="header"></div>
+
+  <main class="max-w-3xl mx-auto px-4 py-6 clms-fade-in">
+    <div class="flex items-center justify-between gap-2">
+      <div>
+        <a href="/dashboard.html" class="text-slate-400 hover:text-navy text-sm">← 대시보드</a>
+        <h1 class="text-xl font-bold text-navy-dark mt-0.5">사업 목록</h1>
+      </div>
+      <a id="btn-new" href="/project-new.html" hidden
+        class="shrink-0 px-4 py-2.5 rounded-xl bg-navy text-white text-sm font-bold hover:bg-navy-light">+ 신규 사업</a>
+    </div>
+
+    <!-- 필터 -->
+    <div class="bg-white rounded-xl border border-slate-200 p-3 mt-4 space-y-2">
+      <input id="search" type="search" placeholder="사업명 또는 사업ID 검색"
+        class="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-navy/30" />
+      <div class="flex gap-2">
+        <select id="filter-type" class="flex-1 border border-slate-200 rounded-lg px-2 py-2 text-sm bg-white">
+          <option value="">전체 유형</option>
+        </select>
+        <select id="filter-status" class="flex-1 border border-slate-200 rounded-lg px-2 py-2 text-sm bg-white">
+          <option value="">전체 상태</option>
+        </select>
+        <select id="sort" class="flex-1 border border-slate-200 rounded-lg px-2 py-2 text-sm bg-white">
+          <option value="recent">최신순</option>
+          <option value="progress">진행률순</option>
+          <option value="deadline">기한 임박순</option>
+        </select>
+      </div>
+    </div>
+
+    <p id="count" class="text-xs text-slate-400 mt-3"></p>
+    <div id="list" class="space-y-2.5 mt-1"></div>
+    <div id="empty" hidden class="bg-white rounded-xl border border-slate-200 p-10 text-center text-sm text-slate-400"></div>
+  </main>
+  <div id="footer"></div>
+
+  <script type="module">
+    import '/js/app.js';
+    import { mountAppHeader, mountFooter } from '/js/components/layout.js';
+    import { escapeHtml } from '/js/components/link-renderer.js';
+    import { requireActive } from '/js/auth.js';
+    import { PROJECT_TYPES, PROJECT_STATUS } from '/js/constants.js';
+    import { stageName } from '/js/stages.js';
+    import { listAccessibleProjects, canEditProjects, calcProgress, formatDate, isDeadlineNear } from '/js/projects.js';
+
+    (async () => {
+      const user = await requireActive();
+      if (!user) return;
+
+      mountAppHeader(document.getElementById('header'), { user });
+      mountFooter(document.getElementById('footer'));
+
+      if (canEditProjects(user)) document.getElementById('btn-new').hidden = false;
+
+      const typeSel = document.getElementById('filter-type');
+      PROJECT_TYPES.forEach((t) => typeSel.insertAdjacentHTML('beforeend', `<option value="${t}">${t}</option>`));
+      const statusSel = document.getElementById('filter-status');
+      for (const [k, v] of Object.entries(PROJECT_STATUS)) {
+        statusSel.insertAdjacentHTML('beforeend', `<option value="${k}">${v}</option>`);
+      }
+
+      const projects = await listAccessibleProjects(user);
+      const listEl = document.getElementById('list');
+      const emptyEl = document.getElementById('empty');
+
+      function render() {
+        const q = document.getElementById('search').value.trim().toLowerCase();
+        const ft = typeSel.value;
+        const fs = statusSel.value;
+        const sort = document.getElementById('sort').value;
+
+        let rows = projects.filter((p) => {
+          if (ft && p.basicInfo.type !== ft) return false;
+          if (fs && p.status !== fs) return false;
+          if (q && !(`${p.basicInfo.name} ${p.projectId}`.toLowerCase().includes(q))) return false;
+          return true;
+        });
+        if (sort === 'recent') rows.sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt)));
+        else if (sort === 'progress') rows.sort((a, b) => calcProgress(b) - calcProgress(a));
+        else if (sort === 'deadline') rows.sort((a, b) => String(a.basicInfo.endDate).localeCompare(String(b.basicInfo.endDate)));
+
+        document.getElementById('count').textContent = `${rows.length}개 사업`;
+
+        if (rows.length === 0) {
+          listEl.innerHTML = '';
+          emptyEl.hidden = false;
+          emptyEl.textContent = projects.length === 0
+            ? '조회 가능한 사업이 없습니다.' : '검색 조건에 맞는 사업이 없습니다.';
+          return;
+        }
+        emptyEl.hidden = true;
+
+        listEl.innerHTML = rows.map((p) => {
+          const progress = calcProgress(p);
+          const near = isDeadlineNear(p);
+          const statusBadge = p.status === 'completed'
+            ? '<span class="text-[10px] font-bold px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-700">완료</span>'
+            : p.status === 'suspended'
+              ? '<span class="text-[10px] font-bold px-1.5 py-0.5 rounded bg-slate-200 text-slate-600">중단</span>'
+              : '<span class="text-[10px] font-bold px-1.5 py-0.5 rounded bg-blue-100 text-blue-700">진행 중</span>';
+          return `
+            <a href="/project-detail.html?id=${encodeURIComponent(p.projectId)}"
+              class="block bg-white rounded-xl border border-slate-200 p-4 hover:border-navy hover:shadow-sm transition-all">
+              <div class="flex items-start justify-between gap-2">
+                <div class="min-w-0">
+                  <div class="flex items-center gap-1.5 flex-wrap">
+                    <span class="font-bold text-navy-dark">${escapeHtml(p.basicInfo.name)}</span>
+                    ${statusBadge}
+                  </div>
+                  <div class="text-xs text-slate-400 mt-0.5">${escapeHtml(p.projectId)} · ${escapeHtml(p.basicInfo.type)}</div>
+                </div>
+                <span class="shrink-0 text-xs font-bold text-navy">${progress}%</span>
+              </div>
+              <div class="mt-2 h-1.5 bg-slate-100 rounded-full overflow-hidden">
+                <div class="h-full bg-gold" style="width:${progress}%"></div>
+              </div>
+              <div class="flex items-center justify-between mt-2 text-xs text-slate-500">
+                <span>현재 단계: <b class="text-navy-dark">${p.currentStage}. ${stageName(p.currentStage)}</b></span>
+                <span class="${near ? 'text-red-600 font-semibold' : ''}">준공 ${formatDate(p.basicInfo.endDate)}${near ? ' ⚠' : ''}</span>
+              </div>
+              <div class="text-xs text-slate-400 mt-1">담당: ${escapeHtml((p.members && p.members.officer && p.members.officer.name) || '-')}</div>
+            </a>`;
+        }).join('');
+      }
+
+      ['input', 'change'].forEach((ev) => {
+        document.getElementById('search').addEventListener(ev, render);
+        typeSel.addEventListener(ev, render);
+        statusSel.addEventListener(ev, render);
+        document.getElementById('sort').addEventListener(ev, render);
+      });
+      render();
+    })();
+  </script>
+</body>
+</html>
