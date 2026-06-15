@@ -4,9 +4,9 @@
  */
 
 import { APP_NAME, APP_SHORT, roleLabel, roleBadgeClass } from '../constants.js';
-import { isMock } from '../backend.js';
+import { isMock, Db } from '../backend.js';
 import { logout } from '../auth.js';
-import { unreadCount } from '../notifications.js';
+import { unreadCount } from '../communication.js';
 import { escapeHtml } from './link-renderer.js';
 
 /* ============================================================
@@ -148,16 +148,26 @@ export function mountAppHeader(el, { user = null } = {}) {
         </a>
         <div class="flex items-center gap-1.5 sm:gap-2">
           ${isMock ? '<span class="hidden sm:inline text-[11px] font-bold px-2 py-0.5 rounded bg-gold text-navy-dark">목업 모드</span>' : ''}
-          <button data-act="bell"
-            class="relative w-9 h-9 rounded-full hover:bg-white/10 flex items-center justify-center"
-            aria-label="알림">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/>
-              <path d="M13.73 21a2 2 0 0 1-3.46 0"/>
-            </svg>
-            <span data-bell-badge hidden
-              class="absolute -top-0.5 -right-0.5 min-w-[16px] h-4 px-1 rounded-full bg-red-500 text-white text-[10px] font-bold flex items-center justify-center"></span>
-          </button>
+          <div class="relative" data-bell-root>
+            <button data-act="bell"
+              class="relative w-9 h-9 rounded-full hover:bg-white/10 flex items-center justify-center"
+              aria-label="알림">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/>
+                <path d="M13.73 21a2 2 0 0 1-3.46 0"/>
+              </svg>
+              <span data-bell-badge hidden
+                class="absolute -top-0.5 -right-0.5 min-w-[16px] h-4 px-1 rounded-full bg-red-500 text-white text-[10px] font-bold flex items-center justify-center"></span>
+            </button>
+            <div data-bell-panel hidden
+              class="absolute right-0 mt-2 w-72 bg-white text-slate-700 rounded-xl shadow-xl overflow-hidden clms-fade-in">
+              <div class="px-4 py-2.5 border-b border-slate-100 flex items-center justify-between">
+                <span class="text-sm font-bold text-navy-dark">알림</span>
+                <button data-act="bell-readall" class="text-xs text-slate-400 hover:text-navy">모두 읽음</button>
+              </div>
+              <div data-bell-list class="max-h-80 overflow-y-auto"></div>
+            </div>
+          </div>
           <div class="relative" data-menu-root>
             <button data-act="menu"
               class="flex items-center gap-2 pl-1.5 pr-2 py-1 rounded-full hover:bg-white/10">
@@ -177,7 +187,6 @@ export function mountAppHeader(el, { user = null } = {}) {
               </div>
               <button data-act="profile" class="w-full text-left px-4 py-2.5 text-sm hover:bg-slate-50">내 정보 수정</button>
               ${role === 'system_admin' ? '<button data-act="approvals" class="w-full text-left px-4 py-2.5 text-sm hover:bg-slate-50">사용자 승인 관리</button>' : ''}
-              <button data-act="notif"   class="w-full text-left px-4 py-2.5 text-sm hover:bg-slate-50">알림 설정</button>
               <button data-act="logout"  class="w-full text-left px-4 py-2.5 text-sm text-red-600 hover:bg-red-50 border-t border-slate-100">로그아웃</button>
             </div>
           </div>
@@ -187,6 +196,33 @@ export function mountAppHeader(el, { user = null } = {}) {
 
   const menu = el.querySelector('[data-menu]');
   const menuRoot = el.querySelector('[data-menu-root]');
+  const bellRoot = el.querySelector('[data-bell-root]');
+  const bellPanel = el.querySelector('[data-bell-panel]');
+  const bellList = el.querySelector('[data-bell-list]');
+
+  function fmtAgo(iso) {
+    const d = new Date(iso); if (isNaN(d)) return '';
+    const s = (Date.now() - d.getTime()) / 1000;
+    if (s < 60) return '방금'; if (s < 3600) return Math.floor(s / 60) + '분 전';
+    if (s < 86400) return Math.floor(s / 3600) + '시간 전'; return Math.floor(s / 86400) + '일 전';
+  }
+  async function renderBell() {
+    if (!user || !user.uid) return;
+    bellList.innerHTML = '<div class="py-6 text-center text-xs text-slate-400">불러오는 중...</div>';
+    let items = [];
+    try { items = await Db.listNotifications(user.uid); } catch { items = []; }
+    items = items.slice(0, 20);
+    bellList.innerHTML = items.length === 0
+      ? '<div class="py-6 text-center text-xs text-slate-400">알림이 없습니다.</div>'
+      : items.map((n) => `
+        <a href="${escapeHtml(n.link || '#')}" class="block px-4 py-2.5 border-b border-slate-50 hover:bg-slate-50 ${n.read ? '' : 'bg-blue-50/50'}">
+          <div class="text-sm font-medium text-navy-dark truncate">${escapeHtml(n.title || '')}</div>
+          ${n.body ? `<div class="text-xs text-slate-500 truncate">${escapeHtml(n.body)}</div>` : ''}
+          <div class="text-[10px] text-slate-400 mt-0.5">${fmtAgo(n.createdAt)}</div>
+        </a>`).join('');
+  }
+  function closeBell() { bellPanel.hidden = true; document.removeEventListener('click', onBellDoc); }
+  function onBellDoc(e) { if (!bellRoot.contains(e.target)) closeBell(); }
 
   function closeMenu() {
     menu.hidden = true;
@@ -196,7 +232,7 @@ export function mountAppHeader(el, { user = null } = {}) {
     if (!menuRoot.contains(e.target)) closeMenu();
   }
 
-  el.addEventListener('click', (e) => {
+  el.addEventListener('click', async (e) => {
     const act = e.target.closest('[data-act]');
     if (!act) return;
     switch (act.dataset.act) {
@@ -209,7 +245,19 @@ export function mountAppHeader(el, { user = null } = {}) {
         }
         break;
       case 'bell':
-        window.location.href = '/notifications.html';
+        if (bellPanel.hidden) {
+          bellPanel.hidden = false;
+          renderBell();
+          setTimeout(() => document.addEventListener('click', onBellDoc), 0);
+        } else { closeBell(); }
+        break;
+      case 'bell-readall':
+        if (user && user.uid) {
+          await Db.markAllNotificationsRead(user.uid);
+          const badge = el.querySelector('[data-bell-badge]');
+          if (badge) badge.hidden = true;
+          renderBell();
+        }
         break;
       case 'profile':
         closeMenu();
@@ -218,10 +266,6 @@ export function mountAppHeader(el, { user = null } = {}) {
       case 'approvals':
         closeMenu();
         window.location.href = '/admin/approvals.html';
-        break;
-      case 'notif':
-        closeMenu();
-        window.location.href = '/settings/notifications.html';
         break;
       case 'logout':
         closeMenu();
@@ -253,7 +297,7 @@ export function mountAppHeader(el, { user = null } = {}) {
  * 푸터
  * ============================================================ */
 
-export function mountFooter(el, { version = 'v1.1 · Phase 1' } = {}) {
+export function mountFooter(el, { version = '심플 버전' } = {}) {
   const year = new Date().getFullYear();
   el.innerHTML = `
     <footer class="mt-10 py-6 text-center text-xs text-slate-400">

@@ -1,0 +1,447 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <meta name="theme-color" content="#1a3a5c" />
+  <meta name="description" content="시설공사 진행관리 — 사업" />
+  <title>사업 — CLMS</title>
+
+  <link rel="manifest" href="/manifest.json" />
+  <link rel="icon" href="/icons/favicon-32.png" type="image/png" />
+  <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png" />
+
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/pretendard@1.3.9/dist/web/static/pretendard.min.css" />
+  <link rel="stylesheet" href="/css/styles.css" />
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="/js/tailwind-config.js"></script>
+</head>
+<body class="min-h-full bg-slate-100">
+  <div id="header"></div>
+
+  <main class="max-w-2xl mx-auto px-4 py-6 clms-fade-in">
+    <a href="/dashboard.html" class="text-slate-400 hover:text-navy text-sm">← 목록</a>
+
+    <div id="content" hidden>
+      <!-- 사업 헤더 -->
+      <section class="bg-white rounded-2xl border border-slate-200 p-5 mt-2">
+        <div class="flex items-start justify-between gap-2">
+          <div class="min-w-0">
+            <div class="flex items-center gap-1.5 flex-wrap">
+              <h1 id="p-name" class="text-lg font-bold text-navy-dark"></h1>
+              <span id="p-status"></span>
+            </div>
+            <p id="p-meta" class="text-xs text-slate-400 mt-0.5"></p>
+          </div>
+          <div class="text-right shrink-0">
+            <div id="p-progress" class="text-xl font-extrabold text-navy"></div>
+            <a id="p-edit" href="#" hidden class="text-[11px] text-slate-400 hover:text-navy">정보 수정</a>
+          </div>
+        </div>
+        <div class="mt-3 h-2 bg-slate-100 rounded-full overflow-hidden">
+          <div id="p-bar" class="h-full bg-gold transition-all" style="width:0%"></div>
+        </div>
+      </section>
+
+      <!-- 탭 -->
+      <div id="tabs" class="flex gap-1 bg-white border border-slate-200 rounded-xl p-1 mt-4">
+        <button data-tab="overview" class="flex-1 py-2 rounded-lg text-sm font-semibold">개요</button>
+        <button data-tab="progress" class="flex-1 py-2 rounded-lg text-sm font-semibold">진행상황</button>
+        <button data-tab="comm" class="flex-1 py-2 rounded-lg text-sm font-semibold">소통</button>
+      </div>
+
+      <div id="panel" class="mt-4"></div>
+    </div>
+
+    <div id="loading" class="bg-white rounded-2xl border border-slate-200 p-10 text-center mt-4">
+      <span class="clms-spinner clms-spinner--navy"></span>
+      <p class="text-sm text-slate-400 mt-2">불러오는 중...</p>
+    </div>
+    <div id="denied" hidden class="bg-white rounded-2xl border border-slate-200 p-10 text-center mt-4">
+      <p class="text-sm text-slate-500">사업을 찾을 수 없거나 조회 권한이 없습니다.</p>
+      <a href="/dashboard.html" class="inline-block mt-3 text-navy font-semibold text-sm">목록으로</a>
+    </div>
+  </main>
+  <div id="footer"></div>
+
+  <script type="module">
+    import '/js/app.js';
+    import { mountAppHeader, mountFooter, toast, confirmDialog } from '/js/components/layout.js';
+    import { escapeHtml, renderTextWithLinks } from '/js/components/link-renderer.js';
+    import { renderCommentThread } from '/js/components/comment-thread.js';
+    import { mountPostActions } from '/js/components/post-actions.js';
+    import { requireActive } from '/js/auth.js';
+    import { Db } from '/js/backend.js';
+    import { PROJECT_STATUS, PROGRESS_STATUS, STAGE_TEMPLATE, COMMUNICATION_CATEGORIES, CATEGORY_ORDER, roleLabel, roleBadgeClass } from '/js/constants.js';
+    import { canViewProject, canEditProjects, calcProgress, sortedProgress, newMilestone, formatBudget, formatDate } from '/js/projects.js';
+    import { canPost, listPosts, createPost, updatePost, softDeletePost, markRead, listComments, createComment, updateComment, deleteComment } from '/js/communication.js';
+
+    const params = new URLSearchParams(location.search);
+    const projectId = params.get('id');
+    const INP = 'w-full border border-slate-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-navy/30';
+
+    let user, project, editable;
+    let activeTab = params.get('tab') || 'overview';
+    let activeCat = params.get('cat') || 'notice';
+
+    (async () => {
+      user = await requireActive();
+      if (!user) return;
+      mountAppHeader(document.getElementById('header'), { user });
+      mountFooter(document.getElementById('footer'));
+
+      project = projectId ? await Db.getProject(projectId) : null;
+      document.getElementById('loading').hidden = true;
+      if (!project || !canViewProject(user, project)) { document.getElementById('denied').hidden = false; return; }
+      editable = canEditProjects(user);
+      document.getElementById('content').hidden = false;
+
+      renderHeader();
+      bindTabs();
+      setTab(activeTab);
+
+      const deepPost = params.get('post');
+      if (activeTab === 'comm' && deepPost) {
+        const post = await Db.getPost(projectId, activeCat, deepPost);
+        if (post && !post.deletedAt) openPostModal(activeCat, post);
+      }
+    })();
+
+    function renderHeader() {
+      const b = project.basicInfo;
+      document.getElementById('p-name').textContent = b.name;
+      const st = PROJECT_STATUS[project.status] || PROJECT_STATUS.active;
+      document.getElementById('p-status').innerHTML = `<span class="text-[10px] font-bold px-1.5 py-0.5 rounded ${st.badge}">${st.label}</span>`;
+      document.getElementById('p-meta').textContent = `${project.projectId} · ${b.type || ''} · ${b.department || ''}`;
+      const pr = calcProgress(project);
+      document.getElementById('p-progress').textContent = pr + '%';
+      document.getElementById('p-bar').style.width = pr + '%';
+      const edit = document.getElementById('p-edit');
+      if (editable) { edit.hidden = false; edit.href = '/project-new.html?id=' + encodeURIComponent(projectId); }
+    }
+
+    function bindTabs() {
+      document.getElementById('tabs').addEventListener('click', (e) => {
+        const btn = e.target.closest('[data-tab]');
+        if (btn) setTab(btn.dataset.tab);
+      });
+    }
+    function setTab(tab) {
+      activeTab = tab;
+      document.querySelectorAll('#tabs [data-tab]').forEach((b) => {
+        const on = b.dataset.tab === tab;
+        b.classList.toggle('bg-navy', on);
+        b.classList.toggle('text-white', on);
+        b.classList.toggle('text-slate-500', !on);
+      });
+      if (tab === 'overview') renderOverview();
+      else if (tab === 'progress') renderProgress();
+      else renderComm();
+    }
+
+    /* ============ 개요 ============ */
+    function renderOverview() {
+      const b = project.basicInfo, m = project.members || {};
+      const row = (label, val) => `
+        <div class="flex justify-between gap-3 py-1.5 border-b border-slate-50">
+          <span class="text-slate-400 shrink-0">${label}</span>
+          <span class="text-slate-700 font-medium text-right">${escapeHtml(val || '-')}</span>
+        </div>`;
+      const member = (label, color, mm) => {
+        mm = mm || {};
+        const tel = mm.contact ? `<a href="tel:${escapeHtml(mm.contact)}" class="text-navy font-medium">${escapeHtml(mm.contact)}</a>` : '<span class="text-slate-400">연락처 미등록</span>';
+        return `
+          <div class="border border-slate-100 rounded-lg p-3">
+            <div class="text-xs font-bold ${color}">${label}</div>
+            <div class="text-sm text-navy-dark font-semibold mt-0.5">${escapeHtml(mm.name || '미정')}${mm.org ? ` <span class="font-normal text-slate-400">${escapeHtml(mm.org)}</span>` : ''}</div>
+            <div class="text-xs mt-0.5">${tel}</div>
+          </div>`;
+      };
+      document.getElementById('panel').innerHTML = `
+        <section class="bg-white rounded-2xl border border-slate-200 p-5">
+          <h2 class="font-bold text-navy-dark text-sm mb-1">사업 정보</h2>
+          ${b.summary ? `<p class="text-sm text-slate-600 mb-2">${escapeHtml(b.summary)}</p>` : ''}
+          <div class="text-sm">
+            ${row('사업유형', b.type)}
+            ${row('위치', b.location)}
+            ${row('사업기간', `${formatDate(b.startDate)} ~ ${formatDate(b.endDate)}`)}
+            ${row('총사업비', formatBudget(b.totalBudget))}
+          </div>
+          <h2 class="font-bold text-navy-dark text-sm mt-4 mb-2">참여자</h2>
+          <div class="space-y-2">
+            ${member('감독공무원', 'text-navy', m.officer)}
+            ${member('시공사', 'text-amber-600', m.contractor)}
+            ${member('감리', 'text-emerald-700', m.supervisor)}
+          </div>
+        </section>`;
+    }
+
+    /* ============ 진행상황 ============ */
+    function renderProgress() {
+      const list = sortedProgress(project);
+      const items = list.map((m) => {
+        const ps = PROGRESS_STATUS[m.status] || PROGRESS_STATUS.planned;
+        return `
+          <div class="relative pl-6 pb-4 last:pb-0" data-mid="${escapeHtml(m.id)}">
+            <span class="absolute left-0 top-1 w-3 h-3 rounded-full ${ps.dot} ring-4 ring-white"></span>
+            <span class="absolute left-[5px] top-4 bottom-0 w-px bg-slate-200"></span>
+            <div class="flex items-start justify-between gap-2">
+              <div class="min-w-0">
+                <div class="flex items-center gap-1.5 flex-wrap">
+                  <span class="text-sm font-semibold text-navy-dark">${escapeHtml(m.title)}</span>
+                  <span class="text-[10px] font-bold px-1.5 py-0.5 rounded ${ps.badge}">${ps.label}</span>
+                </div>
+                <div class="text-xs text-slate-400 mt-0.5">${m.date ? formatDate(m.date) : '날짜 미정'}</div>
+                ${m.note ? `<div class="text-xs text-slate-500 mt-1">${escapeHtml(m.note)}</div>` : ''}
+              </div>
+              ${editable ? `
+                <div class="shrink-0 flex gap-1">
+                  <button data-edit-mid="${escapeHtml(m.id)}" class="text-xs text-slate-400 hover:text-navy">수정</button>
+                  <button data-del-mid="${escapeHtml(m.id)}" class="text-xs text-slate-400 hover:text-red-600">삭제</button>
+                </div>` : ''}
+            </div>
+          </div>`;
+      }).join('');
+
+      document.getElementById('panel').innerHTML = `
+        <section class="bg-white rounded-2xl border border-slate-200 p-5">
+          <div class="flex items-center justify-between mb-3">
+            <h2 class="font-bold text-navy-dark text-sm">절차별 진행상황</h2>
+            ${editable ? `
+              <div class="flex gap-1.5">
+                <button data-act="add-tpl" class="text-xs font-semibold text-slate-500 hover:text-navy">표준 12단계</button>
+                <button data-act="add-mid" class="text-xs font-bold text-white bg-navy hover:bg-navy-light rounded-lg px-3 py-1.5">+ 단계 추가</button>
+              </div>` : ''}
+          </div>
+          <div>${list.length ? items : '<p class="text-sm text-slate-400 py-4 text-center">등록된 진행 단계가 없습니다.</p>'}</div>
+        </section>`;
+
+      const panel = document.getElementById('panel');
+      const addBtn = panel.querySelector('[data-act="add-mid"]');
+      if (addBtn) addBtn.addEventListener('click', () => openMilestoneModal(null));
+      const tplBtn = panel.querySelector('[data-act="add-tpl"]');
+      if (tplBtn) tplBtn.addEventListener('click', addTemplate);
+      panel.querySelectorAll('[data-edit-mid]').forEach((b) => b.addEventListener('click', () => {
+        openMilestoneModal((project.progress || []).find((m) => m.id === b.dataset.editMid));
+      }));
+      panel.querySelectorAll('[data-del-mid]').forEach((b) => b.addEventListener('click', () => removeMilestone(b.dataset.delMid)));
+    }
+
+    async function addTemplate() {
+      const ok = await confirmDialog({ title: '표준 12단계 추가', message: '예산편성부터 하자보수까지 12단계를 진행상황에 추가합니다. (날짜는 비워둠)', confirmText: '추가' });
+      if (!ok) return;
+      const existing = new Set((project.progress || []).map((m) => m.title));
+      const added = STAGE_TEMPLATE.filter((t) => !existing.has(t)).map((t) => newMilestone({ title: t, date: '', status: 'planned' }));
+      project = await Db.updateProject(projectId, { progress: [...(project.progress || []), ...added] });
+      renderHeader(); renderProgress();
+      toast(`${added.length}개 단계가 추가되었습니다.`, 'success');
+    }
+
+    async function removeMilestone(id) {
+      const ok = await confirmDialog({ title: '단계 삭제', message: '이 진행 단계를 삭제하시겠습니까?', confirmText: '삭제', danger: true });
+      if (!ok) return;
+      project = await Db.updateProject(projectId, { progress: (project.progress || []).filter((m) => m.id !== id) });
+      renderHeader(); renderProgress();
+      toast('삭제되었습니다.', 'success');
+    }
+
+    function openMilestoneModal(existing) {
+      const isEdit = !!existing;
+      const overlay = document.createElement('div');
+      overlay.className = 'fixed inset-0 z-[10000] flex items-center justify-center bg-black/50 p-4';
+      overlay.innerHTML = `
+        <div class="bg-white rounded-2xl shadow-xl w-full max-w-sm p-5 clms-fade-in">
+          <h3 class="font-bold text-navy-dark">${isEdit ? '단계 수정' : '단계 추가'}</h3>
+          <div class="space-y-3 mt-3">
+            <div>
+              <label class="block text-sm font-semibold text-slate-700 mb-1">단계명 <span class="text-red-500">*</span></label>
+              <input data-f="title" type="text" class="${INP}" placeholder="예: 착공" value="${isEdit ? escapeHtml(existing.title) : ''}" />
+            </div>
+            <div class="grid grid-cols-2 gap-2">
+              <div>
+                <label class="block text-sm font-semibold text-slate-700 mb-1">날짜</label>
+                <input data-f="date" type="date" class="${INP}" value="${isEdit ? escapeHtml(existing.date || '') : ''}" />
+              </div>
+              <div>
+                <label class="block text-sm font-semibold text-slate-700 mb-1">상태</label>
+                <select data-f="status" class="${INP} bg-white">
+                  ${Object.entries(PROGRESS_STATUS).map(([k, v]) => `<option value="${k}" ${isEdit && existing.status === k ? 'selected' : ''}>${v.label}</option>`).join('')}
+                </select>
+              </div>
+            </div>
+            <div>
+              <label class="block text-sm font-semibold text-slate-700 mb-1">비고</label>
+              <input data-f="note" type="text" class="${INP}" value="${isEdit ? escapeHtml(existing.note || '') : ''}" />
+            </div>
+          </div>
+          <div class="mt-5 flex gap-2 justify-end">
+            <button data-act="cancel" class="px-4 py-2 rounded-lg text-sm font-medium text-slate-500 hover:bg-slate-100">취소</button>
+            <button data-act="save" class="px-5 py-2 rounded-lg text-sm font-bold text-white bg-navy hover:bg-navy-light">${isEdit ? '저장' : '추가'}</button>
+          </div>
+        </div>`;
+      overlay.addEventListener('click', async (e) => {
+        if (e.target === overlay || e.target.dataset.act === 'cancel') { overlay.remove(); return; }
+        if (e.target.dataset.act !== 'save') return;
+        const title = overlay.querySelector('[data-f="title"]').value.trim();
+        if (!title) { toast('단계명을 입력해 주세요.', 'warning'); return; }
+        const date = overlay.querySelector('[data-f="date"]').value;
+        const status = overlay.querySelector('[data-f="status"]').value;
+        const note = overlay.querySelector('[data-f="note"]').value.trim();
+        let progress = [...(project.progress || [])];
+        if (isEdit) progress = progress.map((m) => m.id === existing.id ? { ...m, title, date, status, note } : m);
+        else progress.push(newMilestone({ title, date, status, note }));
+        project = await Db.updateProject(projectId, { progress });
+        overlay.remove();
+        renderHeader(); renderProgress();
+        toast(isEdit ? '수정되었습니다.' : '추가되었습니다.', 'success');
+      });
+      document.body.appendChild(overlay);
+      overlay.querySelector('[data-f="title"]').focus();
+    }
+
+    /* ============ 소통 ============ */
+    function renderComm() {
+      const subtabs = CATEGORY_ORDER.map((key) => {
+        const c = COMMUNICATION_CATEGORIES[key];
+        const on = key === activeCat;
+        return `<button data-cat="${key}" class="px-3 py-1.5 rounded-lg text-sm font-semibold ${on ? 'bg-navy text-white' : 'text-slate-500'}">${c.icon} ${c.label}</button>`;
+      }).join('');
+      document.getElementById('panel').innerHTML = `
+        <div class="flex gap-1 bg-white border border-slate-200 rounded-xl p-1">${subtabs}</div>
+        <div id="comm-body" class="mt-3"></div>`;
+      document.getElementById('panel').querySelectorAll('[data-cat]').forEach((b) =>
+        b.addEventListener('click', () => { activeCat = b.dataset.cat; renderComm(); }));
+      renderCommList();
+    }
+
+    async function renderCommList() {
+      const cat = COMMUNICATION_CATEGORIES[activeCat];
+      const body = document.getElementById('comm-body');
+      body.innerHTML = '<div class="text-center py-6"><span class="clms-spinner clms-spinner--navy"></span></div>';
+      const posts = await listPosts(projectId, activeCat);
+      const canWrite = canPost(activeCat, user);
+      body.innerHTML = `
+        <div class="flex items-center justify-between mb-2">
+          <span class="text-xs text-slate-400">${escapeHtml(cat.desc)}</span>
+          ${canWrite ? `<button data-act="new" class="text-xs font-bold text-white bg-navy hover:bg-navy-light rounded-lg px-3 py-1.5">+ ${cat.label} 작성</button>` : ''}
+        </div>
+        <div class="space-y-2">
+          ${posts.length === 0 ? '<p class="text-sm text-slate-400 py-4 text-center">등록된 글이 없습니다.</p>'
+            : posts.map((p) => {
+              const unread = !(p.readBy && p.readBy[user.uid]);
+              return `
+                <button data-post="${escapeHtml(p.postId)}" class="w-full text-left bg-white border border-slate-100 rounded-lg p-3 hover:bg-slate-50">
+                  <div class="flex items-center gap-1.5">
+                    ${unread ? '<span class="w-1.5 h-1.5 rounded-full bg-red-500"></span>' : ''}
+                    <span class="font-semibold text-navy-dark text-sm truncate">${escapeHtml(p.title)}</span>
+                  </div>
+                  <div class="flex items-center gap-1.5 mt-1">
+                    <span class="text-[10px] font-bold px-1.5 py-0.5 rounded ${roleBadgeClass(p.author.role)}">${escapeHtml(roleLabel(p.author.role))}</span>
+                    <span class="text-xs text-slate-400">${escapeHtml(p.author.name)} · ${formatDate(p.createdAt)} · 답글 ${p.commentCount || 0}</span>
+                  </div>
+                </button>`;
+            }).join('')}
+        </div>`;
+      const newBtn = body.querySelector('[data-act="new"]');
+      if (newBtn) newBtn.addEventListener('click', () => openComposer(activeCat, null));
+      body.querySelectorAll('[data-post]').forEach((b) => b.addEventListener('click', async () => {
+        const post = await Db.getPost(projectId, activeCat, b.dataset.post);
+        if (post) openPostModal(activeCat, post);
+      }));
+    }
+
+    function openComposer(category, existing) {
+      const isEdit = !!existing;
+      const cat = COMMUNICATION_CATEGORIES[category];
+      const overlay = document.createElement('div');
+      overlay.className = 'fixed inset-0 z-[10000] flex items-center justify-center bg-black/50 p-4';
+      overlay.innerHTML = `
+        <div class="bg-white rounded-2xl shadow-xl w-full max-w-md p-5 clms-fade-in">
+          <h3 class="font-bold text-navy-dark">${cat.icon} ${cat.label} ${isEdit ? '수정' : '작성'}</h3>
+          <div class="space-y-3 mt-3">
+            <input data-f="title" type="text" class="${INP}" placeholder="제목" value="${isEdit ? escapeHtml(existing.title) : ''}" />
+            <textarea data-f="content" rows="5" class="${INP} resize-y" placeholder="내용 (URL은 자동으로 링크 처리됩니다)">${isEdit ? escapeHtml(existing.content) : ''}</textarea>
+          </div>
+          <div class="mt-5 flex gap-2 justify-end">
+            <button data-act="cancel" class="px-4 py-2 rounded-lg text-sm font-medium text-slate-500 hover:bg-slate-100">취소</button>
+            <button data-act="save" class="px-5 py-2 rounded-lg text-sm font-bold text-white bg-navy hover:bg-navy-light">${isEdit ? '저장' : '등록'}</button>
+          </div>
+        </div>`;
+      overlay.addEventListener('click', async (e) => {
+        if (e.target === overlay || e.target.dataset.act === 'cancel') { overlay.remove(); return; }
+        if (e.target.dataset.act !== 'save') return;
+        const title = overlay.querySelector('[data-f="title"]').value.trim();
+        const content = overlay.querySelector('[data-f="content"]').value.trim();
+        if (!title) { toast('제목을 입력해 주세요.', 'warning'); return; }
+        if (!content) { toast('내용을 입력해 주세요.', 'warning'); return; }
+        const saveBtn = e.target; saveBtn.disabled = true;
+        try {
+          if (isEdit) { await updatePost(project, category, existing, { title, content }, user); }
+          else { await createPost(project, category, user, { title, content }); }
+          overlay.remove();
+          toast(isEdit ? '수정되었습니다.' : '등록되었습니다.', 'success');
+          if (isEdit) { const fresh = await Db.getPost(projectId, category, existing.postId); openPostModal(category, fresh); }
+          else { renderCommList(); }
+        } catch (err) {
+          console.error(err); toast('저장 중 오류가 발생했습니다.', 'error'); saveBtn.disabled = false;
+        }
+      });
+      document.body.appendChild(overlay);
+      overlay.querySelector('[data-f="title"]').focus();
+    }
+
+    async function openPostModal(category, post) {
+      post = await markRead(project, category, post, user.uid) || post;
+      const cat = COMMUNICATION_CATEGORIES[category];
+      const edited = !!post.updatedAt;
+      const overlay = document.createElement('div');
+      overlay.className = 'fixed inset-0 z-[9998] flex items-end sm:items-center justify-center bg-black/50 p-0 sm:p-4';
+      overlay.innerHTML = `
+        <div class="bg-white rounded-t-2xl sm:rounded-2xl shadow-xl w-full max-w-lg max-h-[90vh] overflow-y-auto clms-fade-in">
+          <div class="p-5">
+            <div class="flex items-start justify-between gap-2">
+              <div class="flex items-center gap-1.5 flex-wrap">
+                <span class="text-[10px] font-bold px-1.5 py-0.5 rounded ${cat.badge}">${cat.icon} ${cat.label}</span>
+                <span class="text-[10px] font-bold px-1.5 py-0.5 rounded ${roleBadgeClass(post.author.role)}">${escapeHtml(roleLabel(post.author.role))}</span>
+              </div>
+              <div class="flex items-center gap-1">
+                <div data-post-actions></div>
+                <button data-act="close" class="w-8 h-8 rounded-full text-slate-400 hover:bg-slate-100">✕</button>
+              </div>
+            </div>
+            <h2 class="text-lg font-bold text-navy-dark mt-2">${escapeHtml(post.title)}</h2>
+            <div class="text-xs text-slate-400 mt-0.5">${escapeHtml(post.author.name)} · ${formatDate(post.createdAt)} ${edited ? '· 수정됨' : ''}</div>
+            <div class="text-sm text-slate-700 mt-3 leading-relaxed break-words">${renderTextWithLinks(post.content)}</div>
+          </div>
+          <div class="px-5 pb-5 border-t border-slate-100 pt-4">
+            <div data-comments></div>
+          </div>
+        </div>`;
+
+      function close() { overlay.remove(); }
+      overlay.addEventListener('click', (e) => { if (e.target === overlay || e.target.dataset.act === 'close') close(); });
+
+      mountPostActions(overlay.querySelector('[data-post-actions]'), {
+        post, currentUser: user,
+        onEdit: () => { close(); openComposer(category, post); },
+        onDelete: async () => { await softDeletePost(project, category, post); close(); renderCommList(); },
+      });
+
+      const rawComments = await listComments(projectId, category, post.postId);
+      renderCommentThread(overlay.querySelector('[data-comments]'), {
+        currentUser: { uid: user.uid, name: user.name, role: user.role },
+        enableImages: false,
+        comments: rawComments.map((c) => ({ ...c, id: c.commentId })),
+        onCreate: async (draft) => {
+          const created = await createComment(project, category, post, user, { content: draft.content, parentCommentId: draft.parentCommentId });
+          return { ...created, id: created.commentId };
+        },
+        onUpdate: async (id, draft) => { await updateComment(projectId, category, post.postId, id, { content: draft.content }); },
+        onDelete: async (id) => { await deleteComment(projectId, category, post.postId, id); },
+      });
+
+      document.body.appendChild(overlay);
+    }
+  </script>
+</body>
+</html>

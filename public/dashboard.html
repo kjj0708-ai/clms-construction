@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
   <meta name="theme-color" content="#1a3a5c" />
-  <meta name="description" content="시설공사 통합관리시스템 — 대시보드" />
+  <meta name="description" content="시설공사 진행관리 — 대시보드" />
   <title>대시보드 — CLMS</title>
 
   <link rel="manifest" href="/manifest.json" />
@@ -22,7 +22,7 @@
 <body class="min-h-full bg-slate-100">
   <div id="header"></div>
 
-  <main id="main" hidden class="max-w-5xl mx-auto px-4 py-6 clms-fade-in">
+  <main id="main" hidden class="max-w-3xl mx-auto px-4 py-6 clms-fade-in">
 
     <section class="bg-gradient-to-br from-navy to-navy-dark text-white rounded-2xl p-6 shadow-sm">
       <p class="text-white/60 text-sm">환영합니다</p>
@@ -30,56 +30,27 @@
       <p id="greet-sub" class="text-white/70 text-sm mt-1"></p>
     </section>
 
-    <section id="install-banner" hidden
-      class="mt-4 bg-gold/15 border border-gold/40 rounded-xl p-4 flex items-center justify-between gap-3">
-      <div>
-        <div class="text-sm font-bold text-navy-dark">앱으로 설치하기</div>
-        <div class="text-xs text-slate-500">홈 화면에 추가하면 더 빠르게 접근할 수 있습니다.</div>
-      </div>
-      <button id="btn-install" class="shrink-0 px-4 py-2 rounded-lg bg-navy text-white text-sm font-semibold hover:bg-navy-light">설치</button>
-    </section>
+    <!-- 통계 -->
+    <div id="stats" class="grid grid-cols-3 gap-2 mt-4"></div>
 
-    <!-- 사업 현황 -->
-    <section class="mt-4">
-      <div class="flex items-center justify-between">
-        <h2 class="text-sm font-bold text-slate-500">사업 현황</h2>
-        <div class="flex gap-2">
-          <a id="btn-new-project" href="/project-new.html" hidden
-            class="text-xs font-bold text-navy hover:underline">+ 신규 사업</a>
-          <a href="/projects.html" class="text-xs font-semibold text-slate-400 hover:text-navy">전체 보기 →</a>
-        </div>
-      </div>
-      <div id="stats" class="grid grid-cols-4 gap-2 mt-2"></div>
-      <div id="recent-projects" class="space-y-2 mt-3"></div>
-    </section>
-
-    <section class="mt-4 bg-white rounded-xl border border-slate-200 p-4">
-      <div class="flex items-center gap-2 flex-wrap">
-        <span class="text-xs font-bold px-2 py-0.5 rounded bg-emerald-100 text-emerald-700">Phase 3 완료</span>
-        <span class="text-sm font-semibold text-navy-dark">사업 등록 · 12단계 관리</span>
-      </div>
-      <p class="text-xs text-slate-500 mt-1.5">
-        사업 등록·단계 추적·필수 서류 관리가 적용되었습니다. 다음 단계는 공지·댓글·푸시 알림(Phase 4)입니다.
-      </p>
-    </section>
-
-    <h2 class="text-sm font-bold text-slate-500 mt-6 mb-2">바로가기</h2>
-    <div id="available" class="grid sm:grid-cols-2 lg:grid-cols-3 gap-3"></div>
-
-    <h2 class="text-sm font-bold text-slate-500 mt-6 mb-2">개발 로드맵</h2>
-    <div id="roadmap" class="grid sm:grid-cols-2 lg:grid-cols-3 gap-3"></div>
+    <div class="flex items-center justify-between mt-6 mb-2">
+      <h2 class="text-sm font-bold text-slate-500">내 사업</h2>
+      <a id="btn-new" href="/project-new.html" hidden
+        class="text-xs font-bold text-white bg-navy hover:bg-navy-light rounded-lg px-3 py-1.5">+ 신규 사업</a>
+    </div>
+    <div id="list" class="space-y-2.5"></div>
+    <div id="empty" hidden class="bg-white rounded-xl border border-slate-200 p-10 text-center text-sm text-slate-400"></div>
 
   </main>
   <div id="footer"></div>
 
   <script type="module">
-    import { onInstallAvailabilityChange, promptInstall } from '/js/app.js';
-    import { mountAppHeader, mountFooter, toast } from '/js/components/layout.js';
+    import '/js/app.js';
+    import { mountAppHeader, mountFooter } from '/js/components/layout.js';
     import { escapeHtml } from '/js/components/link-renderer.js';
     import { requireActive } from '/js/auth.js';
-    import { roleLabel } from '/js/constants.js';
-    import { stageName } from '/js/stages.js';
-    import { listAccessibleProjects, canEditProjects, calcProgress, isDeadlineNear } from '/js/projects.js';
+    import { roleLabel, PROJECT_STATUS } from '/js/constants.js';
+    import { listAccessibleProjects, canEditProjects, calcProgress, nextMilestone, formatDate } from '/js/projects.js';
 
     (async () => {
       const user = await requireActive();
@@ -91,97 +62,60 @@
 
       document.getElementById('greet-name').textContent = user.name || '사용자';
       document.getElementById('greet-sub').textContent = `${user.department || ''} · ${roleLabel(user.role)}`;
+      if (canEditProjects(user)) document.getElementById('btn-new').hidden = false;
 
-      if (canEditProjects(user)) document.getElementById('btn-new-project').hidden = false;
-
-      // 사업 현황
       const projects = await listAccessibleProjects(user);
       const inProgress = projects.filter((p) => p.status === 'active').length;
       const completed = projects.filter((p) => p.status === 'completed').length;
-      const nearCount = projects.filter((p) => p.status === 'active' && isDeadlineNear(p)).length;
-
       const stats = [
-        { label: '전체', value: projects.length, cls: 'text-navy-dark' },
-        { label: '진행 중', value: inProgress, cls: 'text-blue-600' },
-        { label: '완료', value: completed, cls: 'text-emerald-600' },
-        { label: '기한 임박', value: nearCount, cls: nearCount ? 'text-red-600' : 'text-slate-400' },
+        { v: projects.length, label: '전체', cls: 'text-navy-dark' },
+        { v: inProgress, label: '진행 중', cls: 'text-blue-600' },
+        { v: completed, label: '완료', cls: 'text-emerald-600' },
       ];
       document.getElementById('stats').innerHTML = stats.map((s) => `
         <div class="bg-white rounded-xl border border-slate-200 p-3 text-center">
-          <div class="text-2xl font-extrabold ${s.cls}">${s.value}</div>
+          <div class="text-2xl font-extrabold ${s.cls}">${s.v}</div>
           <div class="text-[11px] text-slate-400 mt-0.5">${s.label}</div>
         </div>`).join('');
 
-      const recent = projects.slice(0, 4);
-      const recentEl = document.getElementById('recent-projects');
-      if (recent.length === 0) {
-        recentEl.innerHTML = `
-          <div class="bg-white rounded-xl border border-slate-200 p-6 text-center text-sm text-slate-400">
-            조회 가능한 사업이 없습니다.${canEditProjects(user) ? ' 신규 사업을 등록해 보세요.' : ''}
-          </div>`;
-      } else {
-        recentEl.innerHTML = recent.map((p) => {
-          const progress = calcProgress(p);
-          return `
-            <a href="/project-detail.html?id=${encodeURIComponent(p.projectId)}"
-              class="block bg-white rounded-xl border border-slate-200 p-3.5 hover:border-navy hover:shadow-sm transition-all">
-              <div class="flex items-center justify-between gap-2">
-                <span class="font-bold text-navy-dark truncate">${escapeHtml(p.basicInfo.name)}</span>
-                <span class="shrink-0 text-xs font-bold text-navy">${progress}%</span>
-              </div>
-              <div class="mt-1.5 h-1.5 bg-slate-100 rounded-full overflow-hidden">
-                <div class="h-full bg-gold" style="width:${progress}%"></div>
-              </div>
-              <div class="text-xs text-slate-400 mt-1.5">${escapeHtml(p.projectId)} · ${p.currentStage}. ${stageName(p.currentStage)}</div>
-            </a>`;
-        }).join('');
+      const listEl = document.getElementById('list');
+      const emptyEl = document.getElementById('empty');
+      if (projects.length === 0) {
+        listEl.innerHTML = '';
+        emptyEl.hidden = false;
+        emptyEl.textContent = canEditProjects(user)
+          ? '등록된 사업이 없습니다. 신규 사업을 등록해 보세요.'
+          : '참여 중인 사업이 없습니다. 관리자에게 사업 배정을 요청하세요.';
+        return;
       }
-
-      // 바로가기
-      const cards = [
-        { href: '/projects.html', icon: '🏗️', title: '사업 목록', desc: '전체 사업 조회·검색' },
-        { href: '/profile.html', icon: '👤', title: '내 정보', desc: '프로필·비밀번호 관리' },
-        { href: '/test-components.html', icon: '🧩', title: '공통 컴포넌트 테스트', desc: '이미지·뷰어·링크·댓글' },
-      ];
-      if (user.role === 'system_admin') {
-        cards.splice(1, 0,
-          { href: '/admin/approvals.html', icon: '✅', title: '사용자 승인 관리', desc: '가입 신청 검토' },
-          { href: '/admin/data-management.html', icon: '💾', title: '데이터 관리', desc: '백업·복원·보고서 출력' });
-      }
-      document.getElementById('available').innerHTML = cards.map((c) => `
-        <a href="${c.href}" class="bg-white rounded-xl border border-slate-200 p-4 hover:border-navy hover:shadow-sm transition-all">
-          <div class="text-2xl">${c.icon}</div>
-          <div class="font-bold text-navy-dark mt-1">${c.title}</div>
-          <div class="text-xs text-slate-500 mt-0.5">${c.desc}</div>
-        </a>`).join('');
-
-      // 개발 로드맵
-      const roadmap = [
-        { phase: 'Phase 4', title: '공지 + 댓글 + 푸시', desc: '게시글 CRUD, 2단계 댓글, FCM 푸시 알림', icon: '📢' },
-        { phase: 'Phase 5', title: '협업 · 아카이브 · 점검', desc: '공사지시·질의응답·작업일지·안전점검', icon: '📂' },
-        { phase: 'Phase 6', title: '보고서 + 데이터 이동성', desc: 'DOCX·XLSX 보고서, JSON 내보내기/가져오기', icon: '📊' },
-      ];
-      document.getElementById('roadmap').innerHTML = roadmap.map((m) => `
-        <button data-phase="${m.phase}"
-          class="text-left bg-white rounded-xl border border-slate-200 border-dashed p-4 hover:border-navy/50 transition-colors">
-          <div class="flex items-center justify-between">
-            <span class="text-2xl">${m.icon}</span>
-            <span class="text-[10px] font-bold px-2 py-0.5 rounded bg-slate-100 text-slate-500">${m.phase}</span>
-          </div>
-          <div class="font-bold text-navy-dark mt-1.5">${m.title}</div>
-          <div class="text-xs text-slate-500 mt-0.5">${m.desc}</div>
-        </button>`).join('');
-      document.getElementById('roadmap').addEventListener('click', (e) => {
-        const btn = e.target.closest('[data-phase]');
-        if (btn) toast(`${btn.dataset.phase} 기능은 개발 예정입니다.`, 'info');
-      });
-
-      // PWA 설치
-      const banner = document.getElementById('install-banner');
-      onInstallAvailabilityChange((available) => { banner.hidden = !available; });
-      document.getElementById('btn-install').addEventListener('click', async () => {
-        if (await promptInstall()) toast('앱이 설치되었습니다.', 'success');
-      });
+      listEl.innerHTML = projects.map((p) => {
+        const pr = calcProgress(p);
+        const st = PROJECT_STATUS[p.status] || PROJECT_STATUS.active;
+        const nm = nextMilestone(p);
+        const m = p.members || {};
+        return `
+          <a href="/project.html?id=${encodeURIComponent(p.projectId)}"
+            class="block bg-white rounded-xl border border-slate-200 p-4 hover:border-navy hover:shadow-sm transition-all">
+            <div class="flex items-start justify-between gap-2">
+              <div class="min-w-0">
+                <div class="flex items-center gap-1.5 flex-wrap">
+                  <span class="font-bold text-navy-dark">${escapeHtml(p.basicInfo.name)}</span>
+                  <span class="text-[10px] font-bold px-1.5 py-0.5 rounded ${st.badge}">${st.label}</span>
+                </div>
+                <div class="text-xs text-slate-400 mt-0.5">${escapeHtml(p.projectId)} · ${escapeHtml(p.basicInfo.type || '')}</div>
+              </div>
+              <span class="shrink-0 text-sm font-bold text-navy">${pr}%</span>
+            </div>
+            <div class="mt-2 h-1.5 bg-slate-100 rounded-full overflow-hidden">
+              <div class="h-full bg-gold" style="width:${pr}%"></div>
+            </div>
+            <div class="flex items-center justify-between mt-2 text-xs">
+              <span class="text-slate-500">다음: <b class="text-navy-dark">${nm ? escapeHtml(nm.title) : '—'}</b></span>
+              <span class="text-slate-400">${nm && nm.date ? formatDate(nm.date) : ''}</span>
+            </div>
+            <div class="text-[11px] text-slate-400 mt-1">시공 ${escapeHtml((m.contractor && m.contractor.org) || '미정')} · 감리 ${escapeHtml((m.supervisor && m.supervisor.org) || '미정')}</div>
+          </a>`;
+      }).join('');
     })();
   </script>
 </body>
