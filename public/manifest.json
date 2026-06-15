@@ -1,7 +1,7 @@
 {
-  "name": "시설공사 통합관리시스템",
-  "short_name": "CLMS",
-  "description": "기초지자체 시설공사 사업의 전 생애주기를 통합 관리하는 모바일 우선 시스템",
+  "name": "공사관리시스템",
+  "short_name": "CMS",
+  "description": "발주처·시공사·감리 3자가 공사 진행상황과 소통을 공유하는 모바일 우선 시스템",
   "lang": "ko",
   "dir": "ltr",
   "start_url": "/index.html",

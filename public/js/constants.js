@@ -1,7 +1,7 @@
 /** CLMS 공통 상수 — 전 모듈 공유 (심플 버전) */
 
-export const APP_NAME = '시설공사 진행관리';
-export const APP_SHORT = 'CLMS';
+export const APP_NAME = '공사관리시스템';
+export const APP_SHORT = 'CMS';
 
 /**
  * 사용자 역할(Role) 정의.

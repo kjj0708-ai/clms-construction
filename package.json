@@ -2,7 +2,7 @@
   "name": "clms-construction",
   "version": "0.1.0",
   "private": true,
-  "description": "시설공사 통합관리시스템 (Construction Lifecycle Management System)",
+  "description": "공사관리시스템 (CMS) — 발주처·시공사·감리 3자 협업",
   "scripts": {
     "start": "node tools/dev-server.js 5000",
     "serve": "firebase serve",
