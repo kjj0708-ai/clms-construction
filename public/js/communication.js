@@ -14,6 +14,9 @@ export function canPost(category, user) {
   const c = COMMUNICATION_CATEGORIES[category];
   if (!c || !user) return false;
   if (c.post === 'all') return true;
+  if (c.post === 'contractor_supervisor') {
+    return user.role.startsWith('contractor') || user.role.startsWith('supervisor');
+  }
   return PROJECT_EDITOR_ROLES.includes(user.role); // 'officer'
 }
 
@@ -41,11 +44,12 @@ export async function listPosts(projectId, category) {
     .sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt)));
 }
 
-export async function createPost(project, category, author, { title, content }) {
+export async function createPost(project, category, author, { title, content, images }) {
   const post = await Db.createPost(project.projectId, category, {
     type: category,
     title: title.trim(),
     content: content.trim(),
+    images: images || [],
     author: { uid: author.uid, name: author.name, role: author.role },
     readBy: { [author.uid]: nowIso() },
     commentCount: 0,
@@ -61,13 +65,13 @@ export async function createPost(project, category, author, { title, content }) 
   return post;
 }
 
-export async function updatePost(project, category, post, { title, content }, editor) {
+export async function updatePost(project, category, post, { title, content, images }, editor) {
   const revision = {
     revisionId: 'rev-' + Date.now().toString(36), editedAt: nowIso(), editedBy: editor.uid,
-    previousTitle: post.title, previousContent: post.content,
+    title: post.title, content: post.content, images: post.images || []
   };
   return Db.updatePost(project.projectId, category, post.postId, {
-    title: title.trim(), content: content.trim(), updatedAt: nowIso(),
+    title: title.trim(), content: content.trim(), images: images || [], updatedAt: nowIso(),
     revisions: [...(post.revisions || []), revision],
   });
 }

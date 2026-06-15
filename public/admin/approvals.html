@@ -8,8 +8,8 @@
   <title>사용자 승인 관리 — CMS</title>
 
   <link rel="manifest" href="/manifest.json" />
-  <link rel="icon" href="/icons/favicon-32.png" type="image/png" />
-  <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png" />
+  <link rel="icon" href="/icons/icon.png" type="image/png" />
+  <link rel="apple-touch-icon" href="/icons/icon.png" />
 
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/pretendard@1.3.9/dist/web/static/pretendard.min.css" />
   <link rel="stylesheet" href="/css/styles.css" />
@@ -29,6 +29,7 @@
     <div class="flex gap-1 bg-white border border-slate-200 rounded-xl p-1 mt-4 w-fit">
       <button data-filter="pending" class="px-4 py-1.5 rounded-lg text-sm font-semibold">승인 대기 <span id="cnt-pending" class="ml-0.5"></span></button>
       <button data-filter="processed" class="px-4 py-1.5 rounded-lg text-sm font-semibold">처리 완료</button>
+      <button data-filter="users" class="px-4 py-1.5 rounded-lg text-sm font-semibold hidden" id="tab-users">가입된 사용자</button>
     </div>
 
     <div id="list" class="mt-4 space-y-2.5"></div>
@@ -38,7 +39,7 @@
 
   <script type="module">
     import '/js/app.js';
-    import { mountAppHeader, mountFooter, toast } from '/js/components/layout.js';
+    import { mountAppHeader, mountFooter, toast, confirmDialog } from '/js/components/layout.js';
     import { escapeHtml } from '/js/components/link-renderer.js';
     import { requireRole } from '/js/auth.js';
     import { Db, nowIso } from '/js/backend.js';
@@ -47,8 +48,12 @@
     const ASSIGNABLE_ROLES = Object.keys(ROLES).filter((r) => r !== 'pending');
 
     (async () => {
-      const admin = await requireRole(['system_admin']);
+      const admin = await requireRole(['system_admin', 'project_manager']);
       if (!admin) return;
+
+      if (admin.role === 'system_admin') {
+        document.getElementById('tab-users').classList.remove('hidden');
+      }
 
       mountAppHeader(document.getElementById('header'), { user: admin });
       mountFooter(document.getElementById('footer'));
@@ -75,7 +80,51 @@
         setFilterUI();
         listEl.innerHTML = '<div class="text-center py-8"><span class="clms-spinner clms-spinner--navy"></span></div>';
 
-        const all = await Db.listApprovalRequests();
+        let myProjectIds = null;
+        if (admin.role === 'project_manager') {
+          const projs = await Db.listProjects();
+          myProjectIds = projs.filter(p => p.createdBy === admin.uid || (p.members && p.members.officer && p.members.officer.uid === admin.uid)).map(p => p.projectId);
+        }
+
+        if (filter === 'users') {
+          const users = await Db.listUsers();
+          const activeUsers = users.filter(u => u.status === 'active' || u.status === 'inactive');
+          if (activeUsers.length === 0) {
+            listEl.innerHTML = ''; emptyEl.hidden = false; emptyEl.textContent = '가입된 사용자가 없습니다.'; return;
+          }
+          emptyEl.hidden = true;
+          listEl.innerHTML = activeUsers.map(u => {
+            const roleSelect = admin.role === 'system_admin' ? `
+              <select class="text-xs border border-slate-200 rounded px-2 py-1 bg-slate-50" data-uid="${u.uid}" data-act="change-role">
+                ${ASSIGNABLE_ROLES.map(r => `<option value="${r}" ${u.role === r ? 'selected' : ''}>${roleLabel(r)}</option>`).join('')}
+              </select>` : `<span class="text-xs text-slate-400">${escapeHtml(roleLabel(u.role))}</span>`;
+            
+            return `
+              <div class="bg-white rounded-xl border border-slate-200 p-4" data-user="${u.uid}">
+                <div class="flex items-start justify-between gap-3">
+                  <div class="min-w-0">
+                    <div class="flex items-center gap-1.5">
+                      <span class="font-bold text-navy-dark">${escapeHtml(u.name || '-')}</span>
+                      <span class="text-[11px] text-slate-400">${escapeHtml(USER_TYPES[u.userType] || '')}</span>
+                    </div>
+                    <div class="text-xs text-slate-500 mt-0.5">${escapeHtml(u.department || '')} · ${escapeHtml(u.position || '')}</div>
+                    <div class="text-xs text-slate-400 mt-0.5">${escapeHtml(u.contact || '')} · 가입일: ${fmtTime(u.createdAt)}</div>
+                  </div>
+                  <div class="shrink-0 flex items-center gap-2">
+                    ${roleSelect}
+                    <button data-act="delete-active-user" class="px-2 py-1 bg-red-50 hover:bg-red-100 text-red-600 rounded text-xs font-semibold">삭제</button>
+                  </div>
+                </div>
+              </div>`;
+          }).join('');
+          return;
+        }
+
+        const allRaw = await Db.listApprovalRequests();
+        const all = admin.role === 'project_manager'
+          ? allRaw.filter(r => r.userInfo && r.userInfo.userType !== 'officer' && myProjectIds.includes(r.userInfo.requestedProjectId))
+          : allRaw;
+        
         const pending = all.filter((r) => r.status === 'pending');
         document.getElementById('cnt-pending').textContent = pending.length ? `(${pending.length})` : '';
 
@@ -109,7 +158,10 @@
                 </div>
                 ${req.status === 'pending'
                   ? '<button data-act="review" class="shrink-0 px-3 py-1.5 rounded-lg bg-navy text-white text-sm font-semibold hover:bg-navy-light">검토</button>'
-                  : `<span class="shrink-0 text-xs text-slate-400">${escapeHtml(roleLabel((req.assignedRole) || ''))}</span>`}
+                  : `<div class="shrink-0 flex items-center gap-2">
+                       <span class="text-xs text-slate-400">${escapeHtml(roleLabel((req.assignedRole) || ''))}</span>
+                       <button data-act="delete-user" class="px-2 py-1 bg-red-50 hover:bg-red-100 text-red-600 rounded text-xs font-semibold">삭제</button>
+                     </div>`}
               </div>
               ${req.status === 'rejected' && req.rejectionReason
                 ? `<div class="mt-2 text-xs bg-red-50 text-red-600 rounded-lg px-3 py-2">반려 사유: ${escapeHtml(req.rejectionReason)}</div>` : ''}
@@ -119,10 +171,73 @@
 
       listEl.addEventListener('click', async (e) => {
         const btn = e.target.closest('[data-act="review"]');
-        if (!btn) return;
-        const requestId = btn.closest('[data-req]').dataset.req;
-        const req = (await Db.listApprovalRequests()).find((r) => r.requestId === requestId);
-        if (req) openReviewModal(req);
+        const delBtn = e.target.closest('[data-act="delete-user"]');
+        const delActiveBtn = e.target.closest('[data-act="delete-active-user"]');
+        
+        if (btn) {
+          const requestId = btn.closest('[data-req]').dataset.req;
+          const req = (await Db.listApprovalRequests()).find((r) => r.requestId === requestId);
+          if (req) openReviewModal(req);
+          return;
+        }
+
+        if (delBtn) {
+          const requestId = delBtn.closest('[data-req]').dataset.req;
+          const req = (await Db.listApprovalRequests()).find((r) => r.requestId === requestId);
+          if (!req) return;
+          const ok = await confirmDialog({
+            title: '사용자 삭제',
+            message: `${req.userInfo.name}님의 계정 정보와 가입 기록을 시스템에서 완전히 삭제하시겠습니까?\\n(삭제 후 다시 가입할 수 있습니다)`,
+            confirmText: '삭제',
+            danger: true
+          });
+          if (ok) {
+            try {
+              await Db.deleteUserAndRequest(req.userId, req.requestId);
+              toast('사용자가 삭제되었습니다.', 'success');
+              render();
+            } catch (err) {
+              console.error(err);
+              toast('삭제 중 오류가 발생했습니다.', 'error');
+            }
+          }
+        }
+
+        if (delActiveBtn) {
+          const uid = delActiveBtn.closest('[data-user]').dataset.user;
+          const ok = await confirmDialog({
+            title: '사용자 삭제',
+            message: '해당 사용자의 계정을 완전히 삭제하시겠습니까?\\n(삭제 후 복구할 수 없습니다)',
+            confirmText: '삭제',
+            danger: true
+          });
+          if (ok) {
+            try {
+              await Db.deleteUserAndRequest(uid, null);
+              toast('사용자가 삭제되었습니다.', 'success');
+              render();
+            } catch (err) {
+              console.error(err);
+              toast('삭제 중 오류가 발생했습니다.', 'error');
+            }
+          }
+        }
+      });
+
+      listEl.addEventListener('change', async (e) => {
+        const select = e.target.closest('[data-act="change-role"]');
+        if (select) {
+          const uid = select.dataset.uid;
+          const newRole = select.value;
+          try {
+            await Db.updateUser(uid, { role: newRole });
+            toast('권한이 변경되었습니다.', 'success');
+          } catch (err) {
+            console.error(err);
+            toast('권한 변경 중 오류가 발생했습니다.', 'error');
+            render();
+          }
+        }
       });
 
       document.querySelectorAll('[data-filter]').forEach((b) =>
@@ -184,6 +299,36 @@
               await Db.updateApprovalRequest(req.requestId, {
                 status: 'approved', processedAt: nowIso(), processedBy: admin.uid, assignedRole: role,
               });
+
+              // 자동 승인 연동: 프로젝트에 담당자 추가
+              const projId = req.userInfo && req.userInfo.requestedProjectId;
+              if (projId && (role.startsWith('contractor') || role.startsWith('supervisor') || role === 'manager')) {
+                try {
+                  const p = await Db.getProject(projId);
+                  if (p) {
+                    const m = p.members || {};
+                    let target = null;
+                    if (role.startsWith('contractor')) target = 'contractor';
+                    else if (role.startsWith('supervisor')) target = 'supervisor';
+                    // manager나 officer 등은 가입 시 projectID를 안받게 되어있으나 만약을 위해
+                    
+                    if (target) {
+                      m[target] = {
+                        uid: req.userId,
+                        name: req.userInfo.name || '',
+                        org: req.userInfo.department || '',
+                        position: req.userInfo.position || '',
+                        contact: req.userInfo.contact || '',
+                      };
+                      await Db.updateProject(projId, { members: m });
+                      toast(`${u.name}님을 해당 공사에 연동했습니다.`, 'success');
+                    }
+                  }
+                } catch (e) {
+                  console.warn('프로젝트 자동 연동 실패:', e);
+                }
+              }
+
               toast(`${u.name}님을 ${ROLES[role].label}(으)로 승인했습니다.`, 'success');
               close(); render();
             } catch (err) {

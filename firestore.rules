@@ -22,13 +22,19 @@ service cloud.firestore {
       return isActive() && myProfile().role in
         ['system_admin', 'national_director', 'department_head', 'manager', 'officer'];
     }
+    // 부트스트랩 관리자 — 최초 설정 전 누군가 승인해줄 관리자가 없으므로 예외 허용
+    function isBootstrapAdmin() {
+      return isSignedIn() && request.auth.token.email == 'kjj0708@gmail.com';
+    }
 
     // ---- 사용자 ----
     match /users/{uid} {
       allow read: if isSignedIn() && (request.auth.uid == uid || isAdmin());
-      allow create: if isSignedIn() && request.auth.uid == uid
-        && request.resource.data.status == 'pending' && request.resource.data.role == 'pending';
+      allow create: if (isSignedIn() && request.auth.uid == uid
+        && request.resource.data.status == 'pending' && request.resource.data.role == 'pending')
+        || (isBootstrapAdmin() && request.auth.uid == uid);
       allow update: if isAdmin()
+        || (isBootstrapAdmin() && request.auth.uid == uid)
         || (isSignedIn() && request.auth.uid == uid
             && request.resource.data.role == resource.data.role
             && request.resource.data.status == resource.data.status);
@@ -53,7 +59,7 @@ service cloud.firestore {
 
     // ---- 사업(개요·진행상황) ----
     match /projects/{projectId} {
-      allow read: if isActive();
+      allow read: if isSignedIn();
       allow create, update: if isOfficer();
       allow delete: if isAdmin();
 

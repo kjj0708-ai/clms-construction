@@ -1,7 +1,7 @@
 /* CLMS 서비스 워커 — PWA 앱 셸 캐싱 + 오프라인 폴백 (심플 버전) */
 'use strict';
 
-const CACHE_VERSION = 'clms-v9';
+const CACHE_VERSION = 'clms-v20';
 const STATIC_CACHE = `${CACHE_VERSION}-static`;
 const RUNTIME_CACHE = `${CACHE_VERSION}-runtime`;
 
@@ -31,8 +31,8 @@ const APP_SHELL = [
   '/js/components/comment-thread.js',
   '/js/components/image-viewer.js',
   '/js/components/post-actions.js',
-  '/icons/icon-192.png',
-  '/icons/icon-512.png',
+  '/icons/icon.png',
+  '/icons/icon.png',
 ];
 
 self.addEventListener('install', (event) => {
@@ -70,21 +70,18 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // 동일 출처 정적 자산: 캐시 우선 + 백그라운드 갱신
+  // 동일 출처 자산: 네트워크 우선 -> 실패 시 캐시
   if (url.origin === self.location.origin) {
     event.respondWith(
-      caches.match(request).then((cached) => {
-        const network = fetch(request)
-          .then((response) => {
-            if (response && response.status === 200) {
-              const copy = response.clone();
-              caches.open(RUNTIME_CACHE).then((c) => c.put(request, copy));
-            }
-            return response;
-          })
-          .catch(() => cached);
-        return cached || network;
-      })
+      fetch(request)
+        .then((response) => {
+          if (response && response.status === 200) {
+            const copy = response.clone();
+            caches.open(RUNTIME_CACHE).then((c) => c.put(request, copy));
+          }
+          return response;
+        })
+        .catch(() => caches.match(request))
     );
     return;
   }

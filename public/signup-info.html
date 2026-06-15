@@ -8,8 +8,8 @@
   <title>가입 정보 입력 — CMS</title>
 
   <link rel="manifest" href="/manifest.json" />
-  <link rel="icon" href="/icons/favicon-32.png" type="image/png" />
-  <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png" />
+  <link rel="icon" href="/icons/icon.png" type="image/png" />
+  <link rel="apple-touch-icon" href="/icons/icon.png" />
 
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/pretendard@1.3.9/dist/web/static/pretendard.min.css" />
   <link rel="stylesheet" href="/css/styles.css" />
@@ -28,51 +28,104 @@
           입력하신 정보는 <b class="text-navy">관리자 승인</b> 후 사용할 수 있습니다.
         </p>
 
-        <form id="signup-form" class="space-y-3.5 mt-4" novalidate>
-          <div>
-            <label class="block text-sm font-semibold text-slate-700 mb-1">이름 <span class="text-red-500">*</span></label>
-            <input name="name" type="text" required placeholder="실명을 입력하세요"
-              class="w-full border border-slate-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-navy/30" />
-          </div>
-          <div>
-            <label class="block text-sm font-semibold text-slate-700 mb-1">소속 <span class="text-red-500">*</span></label>
-            <input name="department" type="text" required placeholder="부서명 또는 회사명"
-              class="w-full border border-slate-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-navy/30" />
-          </div>
-          <div>
-            <label class="block text-sm font-semibold text-slate-700 mb-1">직위 <span class="text-red-500">*</span></label>
-            <input name="position" type="text" required placeholder="직책 또는 직급"
-              class="w-full border border-slate-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-navy/30" />
-          </div>
-          <div>
-            <label class="block text-sm font-semibold text-slate-700 mb-1">연락처 <span class="text-red-500">*</span></label>
-            <input name="contact" type="tel" required placeholder="010-0000-0000"
-              class="w-full border border-slate-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-navy/30" />
-          </div>
-          <div>
-            <label class="block text-sm font-semibold text-slate-700 mb-1">이메일 <span id="email-req" class="text-red-500" hidden>*</span></label>
-            <input name="email" type="email" placeholder="example@email.com"
-              class="w-full border border-slate-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-navy/30 disabled:bg-slate-100 disabled:text-slate-500" />
-            <p id="email-note" class="text-[11px] text-slate-400 mt-0.5"></p>
-          </div>
+        <form id="signup-form" class="space-y-4 mt-5" novalidate>
+          <!-- 1. 사용자 유형 (필수, 최상단) -->
           <div>
             <label class="block text-sm font-semibold text-slate-700 mb-1">사용자 유형 <span class="text-red-500">*</span></label>
-            <select name="userType" required
+            <select id="userType" name="userType" required
               class="w-full border border-slate-200 rounded-lg px-3 py-2.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-navy/30">
               <option value="">선택하세요</option>
             </select>
           </div>
-          <div>
-            <label class="block text-sm font-semibold text-slate-700 mb-1">비고</label>
-            <textarea name="note" rows="2" placeholder="자기소개 또는 요청사항 (선택)"
-              class="w-full border border-slate-200 rounded-lg px-3 py-2.5 text-sm resize-y focus:outline-none focus:ring-2 focus:ring-navy/30"></textarea>
-          </div>
 
-          <div class="flex gap-2 pt-2">
-            <button type="button" id="btn-cancel"
-              class="flex-1 py-3 rounded-xl font-semibold text-slate-500 bg-slate-100 hover:bg-slate-200">취소</button>
-            <button type="submit" id="btn-submit"
-              class="flex-[2] py-3 rounded-xl font-bold text-white bg-navy hover:bg-navy-light">승인 신청</button>
+          <!-- 동적 입력 영역 (사용자 유형 선택 전에는 숨김) -->
+          <div id="dynamic-fields" class="space-y-4" hidden>
+            
+            <!-- 공통: 이름 -->
+            <div>
+              <label class="block text-sm font-semibold text-slate-700 mb-1">이름 <span class="text-red-500">*</span></label>
+              <input name="name" type="text" placeholder="실명을 입력하세요"
+                class="w-full border border-slate-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-navy/30" />
+            </div>
+
+            <!-- 시공사/감리 등 전용: 공사 선택 -->
+            <div id="project-selection-group" hidden>
+              <label class="block text-sm font-semibold text-slate-700 mb-1">참여 중인 공사/용역 <span class="text-red-500">*</span></label>
+              <select name="projectId"
+                class="w-full border border-slate-200 rounded-lg px-3 py-2.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-navy/30">
+                <option value="">사업을 선택하세요</option>
+              </select>
+              <p class="text-[11px] text-slate-400 mt-1">등록된 공사 목록 중 해당되는 목록을 선택하세요.</p>
+            </div>
+
+            <!-- 소속 입력 (동적 분기) -->
+            <div id="dept-officer-group" hidden>
+              <label class="block text-sm font-semibold text-slate-700 mb-1">소속 <span class="text-red-500">*</span></label>
+              <div class="flex gap-2 items-center">
+                <span class="text-sm font-medium text-slate-700 px-2">도시주택국</span>
+                <span class="text-slate-300">›</span>
+                <select name="officerDivision" class="flex-1 border border-slate-200 rounded-lg px-2 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-navy/30">
+                  <option value="">(과 선택)</option>
+                  <option value="도로과">도로과</option>
+                  <option value="도시계획과">도시계획과</option>
+                  <option value="건축과">건축과</option>
+                  <option value="도시재생경관과">도시재생경관과</option>
+                </select>
+                <span class="text-slate-300">›</span>
+                <input name="officerTeam" type="text" placeholder="0000팀" class="w-24 border border-slate-200 rounded-lg px-2 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-navy/30" />
+              </div>
+            </div>
+            <div id="dept-other-group" hidden>
+              <label class="block text-sm font-semibold text-slate-700 mb-1">소속(회사명) <span class="text-red-500">*</span></label>
+              <input name="department" type="text" placeholder="예: (주)대한건설"
+                class="w-full border border-slate-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-navy/30" />
+            </div>
+
+            <!-- 직위 입력 (동적 분기) -->
+            <div id="pos-officer-group" hidden>
+              <label class="block text-sm font-semibold text-slate-700 mb-1">직위 <span class="text-red-500">*</span></label>
+              <select name="officerPosition" class="w-full border border-slate-200 rounded-lg px-3 py-2.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-navy/30">
+                <option value="">직위 선택</option>
+                <option value="국장">국장</option>
+                <option value="과장">과장</option>
+                <option value="팀장">팀장</option>
+                <option value="주무관">주무관</option>
+              </select>
+            </div>
+            <div id="pos-other-group" hidden>
+              <label class="block text-sm font-semibold text-slate-700 mb-1">직위/직책 <span class="text-red-500">*</span></label>
+              <input name="position" type="text" placeholder="예: 현장소장, 책임감리"
+                class="w-full border border-slate-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-navy/30" />
+            </div>
+
+            <!-- 공통: 연락처 -->
+            <div>
+              <label class="block text-sm font-semibold text-slate-700 mb-1">연락처 <span class="text-red-500">*</span></label>
+              <input name="contact" type="tel" placeholder="010-0000-0000"
+                class="w-full border border-slate-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-navy/30" />
+            </div>
+
+            <!-- 공통: 이메일 (리드온리 처리됨) -->
+            <div>
+              <label class="block text-sm font-semibold text-slate-700 mb-1">이메일 <span id="email-req" class="text-red-500" hidden>*</span></label>
+              <input name="email" type="email" placeholder="example@email.com"
+                class="w-full border border-slate-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-navy/30 disabled:bg-slate-100 disabled:text-slate-500" />
+              <p id="email-note" class="text-[11px] text-slate-400 mt-0.5"></p>
+            </div>
+
+            <!-- 공통: 비고 -->
+            <div>
+              <label class="block text-sm font-semibold text-slate-700 mb-1">비고</label>
+              <textarea name="note" rows="2" placeholder="자기소개 또는 요청사항 (선택)"
+                class="w-full border border-slate-200 rounded-lg px-3 py-2.5 text-sm resize-y focus:outline-none focus:ring-2 focus:ring-navy/30"></textarea>
+            </div>
+
+            <div class="flex gap-2 pt-2">
+              <button type="button" id="btn-cancel"
+                class="flex-1 py-3 rounded-xl font-semibold text-slate-500 bg-slate-100 hover:bg-slate-200">취소</button>
+              <button type="submit" id="btn-submit"
+                class="flex-[2] py-3 rounded-xl font-bold text-white bg-navy hover:bg-navy-light">승인 신청</button>
+            </div>
           </div>
         </form>
       </div>
@@ -90,13 +143,13 @@
     import './js/app.js';
     import { mountAuthHeader, mountFooter, toast } from './js/components/layout.js';
     import { requireSignup, logout } from './js/auth.js';
-    import { Db, nowIso, normalizePhone } from './js/backend.js';
+    import { Db, nowIso } from './js/backend.js';
     import { USER_TYPES } from './js/constants.js';
 
     mountAuthHeader(document.getElementById('header'));
     mountFooter(document.getElementById('footer'));
 
-    const typeSelect = document.querySelector('select[name="userType"]');
+    const typeSelect = document.getElementById('userType');
     for (const [value, label] of Object.entries(USER_TYPES)) {
       typeSelect.insertAdjacentHTML('beforeend', `<option value="${value}">${label}</option>`);
     }
@@ -120,13 +173,71 @@
       document.getElementById('form-title').textContent = editing ? '가입 정보 수정' : '가입 정보 입력';
       document.getElementById('btn-submit').textContent = editing ? '수정 후 재신청' : '승인 신청';
 
+      // 프로젝트 목록 로드
+      let projects = [];
+      try {
+        projects = await Db.listProjects();
+        const projectSelect = form.elements.projectId;
+        projects.forEach(p => {
+          const name = (p.basicInfo && p.basicInfo.name) || p.projectId;
+          projectSelect.insertAdjacentHTML('beforeend', `<option value="${p.projectId}">${name}</option>`);
+        });
+      } catch (err) {
+        console.warn('프로젝트 목록 로드 실패 (규칙 허용 전일 수 있음):', err);
+      }
+
+      // UI 토글 로직
+      const dynFields = document.getElementById('dynamic-fields');
+      const prjGroup = document.getElementById('project-selection-group');
+      const deptOff = document.getElementById('dept-officer-group');
+      const deptOth = document.getElementById('dept-other-group');
+      const posOff = document.getElementById('pos-officer-group');
+      const posOth = document.getElementById('pos-other-group');
+
+      typeSelect.addEventListener('change', () => {
+        const type = typeSelect.value;
+        if (!type) { dynFields.hidden = true; return; }
+        dynFields.hidden = false;
+
+        const isOfficer = type === 'officer';
+        prjGroup.hidden = isOfficer;
+        
+        deptOff.hidden = !isOfficer;
+        deptOth.hidden = isOfficer;
+        
+        posOff.hidden = !isOfficer;
+        posOth.hidden = isOfficer;
+      });
+
       // 프리필
       if (user) {
-        for (const f of ['name', 'department', 'position', 'contact', 'email', 'userType', 'note']) {
-          if (user[f] != null && form.elements[f]) form.elements[f].value = user[f];
+        if (user.userType && form.elements.userType) {
+          form.elements.userType.value = user.userType;
+          typeSelect.dispatchEvent(new Event('change'));
+        }
+        form.elements.name.value = user.name || '';
+        form.elements.contact.value = user.contact || '';
+        form.elements.note.value = user.note || '';
+        
+        if (user.userType === 'officer') {
+          // Parse "도시주택국 도로과 0000팀"
+          const deptStr = user.department || '';
+          const parts = deptStr.split(' ');
+          if (parts.length >= 3) {
+            form.elements.officerDivision.value = parts[1] || '';
+            form.elements.officerTeam.value = parts[2] || '';
+          }
+          // Mapping position back to select
+          const posMapRev = { 'national_director': '국장', 'department_head': '과장', 'manager': '팀장', 'officer': '주무관' };
+          form.elements.officerPosition.value = posMapRev[user.role] || posMapRev[user.position] || user.position || '';
+        } else {
+          form.elements.projectId.value = user.requestedProjectId || '';
+          form.elements.department.value = user.department || '';
+          form.elements.position.value = user.position || '';
         }
       }
-      // 이메일 처리 — 구글·이메일 가입자는 이메일 고정, 휴대폰 가입자는 선택 입력
+
+      // 이메일 처리
       const emailInput = form.elements.email;
       const emailNote = document.getElementById('email-note');
       if (authUser.provider === 'google' || authUser.provider === 'email') {
@@ -146,49 +257,87 @@
       form.addEventListener('submit', async (e) => {
         e.preventDefault();
         const data = Object.fromEntries(new FormData(form).entries());
-        if (emailInput.disabled) data.email = authUser.email || '';
+        const type = data.userType;
+        const isOfficer = type === 'officer';
 
-        for (const [field, label] of [['name', '이름'], ['department', '소속'], ['position', '직위'], ['contact', '연락처'], ['userType', '사용자 유형']]) {
-          if (!String(data[field] || '').trim()) {
-            toast(`${label}을(를) 입력해 주세요.`, 'warning');
-            form.elements[field].focus();
-            return;
-          }
-        }
-        if (!PHONE_RE.test(data.contact.replace(/\s/g, ''))) {
-          toast('연락처 형식이 올바르지 않습니다. (예: 010-1234-5678)', 'warning');
+        // Validation
+        if (!data.name.trim()) return toast('이름을 입력해 주세요.', 'warning');
+        if (!PHONE_RE.test((data.contact || '').replace(/\s/g, ''))) {
           form.elements.contact.focus();
-          return;
+          return toast('연락처 형식이 올바르지 않습니다. (예: 010-1234-5678)', 'warning');
+        }
+
+        let finalDept = '';
+        let finalPosText = '';
+        let finalRole = 'pending';
+        let reqProjectId = null;
+
+        if (isOfficer) {
+          if (!data.officerDivision) return toast('소속(과)을 선택해 주세요.', 'warning');
+          if (!data.officerTeam.trim()) return toast('소속(팀)을 입력해 주세요.', 'warning');
+          if (!data.officerPosition) return toast('직위를 선택해 주세요.', 'warning');
+          
+          finalDept = `도시주택국 ${data.officerDivision} ${data.officerTeam.trim()}`;
+          finalPosText = data.officerPosition;
+          
+          // Role mapping
+          const roleMap = { '국장': 'national_director', '과장': 'department_head', '팀장': 'manager', '주무관': 'officer' };
+          finalRole = roleMap[finalPosText] || 'officer';
+
+        } else {
+          if (!data.projectId) return toast('참여 중인 공사를 선택해 주세요.', 'warning');
+          if (!data.department.trim()) return toast('소속(회사명)을 입력해 주세요.', 'warning');
+          if (!data.position.trim()) return toast('직위/직책을 입력해 주세요.', 'warning');
+          
+          reqProjectId = data.projectId;
+          finalDept = data.department.trim();
+          finalPosText = data.position.trim();
         }
 
         const submitBtn = document.getElementById('btn-submit');
         submitBtn.disabled = true;
         try {
           const userInfo = {
-            name: data.name.trim(), department: data.department.trim(),
-            position: data.position.trim(), contact: data.contact.trim(),
-            email: (data.email || '').trim(), userType: data.userType, note: (data.note || '').trim(),
+            name: data.name.trim(),
+            department: finalDept,
+            position: finalPosText,
+            contact: data.contact.trim(),
+            email: emailInput.disabled ? (authUser.email || '') : (data.email || '').trim(),
+            userType: type,
+            note: (data.note || '').trim(),
+            requestedProjectId: reqProjectId,
           };
-          // users 문서 저장 (pending 상태)
+          
+          const isAutoApproveAdmin = userInfo.email === 'kjj0708@gmail.com' || (authUser.email && authUser.email === 'kjj0708@gmail.com');
+          const autoRole = isAutoApproveAdmin ? 'system_admin' : 'pending';
+          const autoStatus = isAutoApproveAdmin ? 'active' : 'pending';
+
+          // users 문서 저장
           await Db.setUser(authUser.uid, {
             uid: authUser.uid, ...userInfo,
-            role: 'pending', status: 'pending', accessibleProjects: [],
+            role: autoRole, status: autoStatus, accessibleProjects: [],
             authProvider: authUser.provider,
             createdAt: (user && user.createdAt) || nowIso(),
-            approvedAt: null, approvedBy: null, lastLoginAt: nowIso(),
+            approvedAt: isAutoApproveAdmin ? nowIso() : null,
+            approvedBy: isAutoApproveAdmin ? 'system' : null,
+            lastLoginAt: nowIso(),
           });
-          // 승인 요청 — 기존 요청이 있으면 갱신, 없으면 생성
-          const existing = await Db.findApprovalRequestByUser(authUser.uid);
-          if (existing && existing.status === 'pending') {
-            await Db.updateApprovalRequest(existing.requestId, { userInfo, requestedAt: nowIso() });
-          } else {
-            await Db.createApprovalRequest({
-              userId: authUser.uid, userInfo, requestedAt: nowIso(),
-              status: 'pending', processedAt: null, processedBy: null, rejectionReason: null,
-            });
+
+          if (!isAutoApproveAdmin) {
+            // 승인 요청 — 기존 요청이 있으면 갱신, 없으면 생성
+            const existing = await Db.findApprovalRequestByUser(authUser.uid);
+            if (existing && existing.status === 'pending') {
+              await Db.updateApprovalRequest(existing.requestId, { userInfo, requestedAt: nowIso() });
+            } else {
+              await Db.createApprovalRequest({
+                userId: authUser.uid, userInfo, requestedAt: nowIso(),
+                status: 'pending', processedAt: null, processedBy: null, rejectionReason: null,
+              });
+            }
           }
-          toast(editing ? '수정되어 재신청되었습니다.' : '승인 신청이 접수되었습니다.', 'success');
-          setTimeout(() => location.href = '/pending.html', 600);
+          
+          toast(isAutoApproveAdmin ? '관리자 계정으로 자동 승인되었습니다.' : (editing ? '수정되어 재신청되었습니다.' : '승인 신청이 접수되었습니다.'), 'success');
+          setTimeout(() => location.href = isAutoApproveAdmin ? '/dashboard.html' : '/pending.html', 600);
         } catch (err) {
           console.error(err);
           toast('저장 중 오류가 발생했습니다.', 'error');

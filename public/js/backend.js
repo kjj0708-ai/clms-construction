@@ -321,6 +321,12 @@ const mockDb = {
     const reqs = Object.values(readLS(LS_DB, { approval_requests: {} }).approval_requests);
     return reqs.filter((r) => r.userId === userId).sort((a, b) => String(b.requestedAt).localeCompare(String(a.requestedAt)))[0] || null;
   },
+  async deleteUserAndRequest(userId, requestId) {
+    const db = readLS(LS_DB, blankDb());
+    if (db.users) delete db.users[userId];
+    if (db.approval_requests && requestId) delete db.approval_requests[requestId];
+    writeLS(LS_DB, db);
+  },
 
   // ---- 사업 ----
   async createProject(data) {
@@ -419,6 +425,9 @@ const mockDb = {
     for (const id of Object.keys(all)) all[id].read = true;
     writeLS(LS_DB, db);
   },
+  async uploadImage(base64DataUrl) {
+    return base64DataUrl;
+  },
 };
 
 /* ============================================================
@@ -431,13 +440,14 @@ let _fbPromise = null;
 async function fb() {
   if (_fbPromise) return _fbPromise;
   _fbPromise = (async () => {
-    const [appMod, authMod, fsMod] = await Promise.all([
+    const [appMod, authMod, fsMod, storageMod] = await Promise.all([
       import(`${FB_SDK}/firebase-app.js`),
       import(`${FB_SDK}/firebase-auth.js`),
       import(`${FB_SDK}/firebase-firestore.js`),
+      import(`${FB_SDK}/firebase-storage.js`),
     ]);
     const app = appMod.initializeApp(firebaseConfig);
-    return { app, A: authMod, F: fsMod, auth: authMod.getAuth(app), db: fsMod.getFirestore(app) };
+    return { app, A: authMod, F: fsMod, S: storageMod, auth: authMod.getAuth(app), db: fsMod.getFirestore(app), storage: storageMod.getStorage(app) };
   })();
   return _fbPromise;
 }
@@ -523,6 +533,13 @@ const firebaseDb = {
     const snap = await F.getDocs(F.query(F.collection(db, 'approval_requests'), F.where('userId', '==', userId)));
     return snap.docs.map((d) => d.data())[0] || null;
   },
+  async deleteUserAndRequest(userId, requestId) {
+    const { db, F } = await fb();
+    await F.deleteDoc(F.doc(db, 'users', userId));
+    if (requestId) {
+      await F.deleteDoc(F.doc(db, 'approval_requests', requestId));
+    }
+  },
 
   async createProject(data) {
     const { db, F } = await fb();
@@ -572,6 +589,13 @@ const firebaseDb = {
     const { db, F } = await fb();
     const snap = await F.getDocs(F.collection(db, 'users', uid, 'notifications'));
     await Promise.all(snap.docs.map((d) => F.updateDoc(d.ref, { read: true })));
+  },
+  async uploadImage(base64DataUrl) {
+    const { storage, S } = await fb();
+    const name = `uploads/${Date.now()}_${Math.random().toString(36).slice(2,8)}.jpg`;
+    const ref = S.ref(storage, name);
+    await S.uploadString(ref, base64DataUrl, 'data_url');
+    return await S.getDownloadURL(ref);
   },
 };
 

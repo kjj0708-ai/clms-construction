@@ -37,6 +37,35 @@ export function clearUserCache() {
 export async function resolveState() {
   const authUser = await currentAuthUser();
   if (!authUser) return { state: 'no-auth', authUser: null, user: null };
+
+  // 부트스트랩 관리자: kjj0708@gmail.com 은 항상 system_admin 으로 처리
+  if (authUser.email === 'kjj0708@gmail.com') {
+    const existingUser = await Db.getUser(authUser.uid);
+    const adminUser = {
+      uid: authUser.uid,
+      email: authUser.email,
+      name: (existingUser && existingUser.name) || authUser.displayName || '관리자',
+      department: (existingUser && existingUser.department) || '',
+      position: (existingUser && existingUser.position) || '',
+      contact: (existingUser && existingUser.contact) || '',
+      userType: (existingUser && existingUser.userType) || 'officer',
+      note: (existingUser && existingUser.note) || '',
+      role: 'system_admin',
+      status: 'active',
+      accessibleProjects: (existingUser && existingUser.accessibleProjects) || [],
+      authProvider: authUser.provider,
+      createdAt: (existingUser && existingUser.createdAt) || new Date().toISOString(),
+      approvedAt: (existingUser && existingUser.approvedAt) || new Date().toISOString(),
+      approvedBy: 'system',
+      lastLoginAt: new Date().toISOString(),
+    };
+    // Firestore 문서도 백그라운드로 업데이트
+    Db.setUser(authUser.uid, adminUser).catch(() => {});
+    _userCache = adminUser;
+    _userLoaded = true;
+    return { state: 'active', authUser, user: adminUser };
+  }
+
   const user = await Db.getUser(authUser.uid);
   if (!user) return { state: 'no-profile', authUser, user: null };
   const state = user.status === 'active' ? 'active'

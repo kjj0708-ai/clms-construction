@@ -8,8 +8,8 @@
   <title>승인 대기 — CMS</title>
 
   <link rel="manifest" href="/manifest.json" />
-  <link rel="icon" href="/icons/favicon-32.png" type="image/png" />
-  <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png" />
+  <link rel="icon" href="/icons/icon.png" type="image/png" />
+  <link rel="apple-touch-icon" href="/icons/icon.png" />
 
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/pretendard@1.3.9/dist/web/static/pretendard.min.css" />
   <link rel="stylesheet" href="/css/styles.css" />
@@ -63,13 +63,27 @@
   <script type="module">
     import './js/app.js';
     import { mountAuthHeader, mountFooter, toast, confirmDialog } from './js/components/layout.js';
-    import { requirePending, resolveState, logout } from './js/auth.js';
+    import { requirePending, resolveState, logout, currentAuthUser } from './js/auth.js';
+    import { Db } from './js/backend.js';
     import { USER_TYPES } from './js/constants.js';
 
     mountAuthHeader(document.getElementById('header'));
     mountFooter(document.getElementById('footer'));
 
     (async () => {
+      // kjj0708@gmail.com 계정은 자동으로 system_admin 승인
+      const authUser = await currentAuthUser();
+      if (authUser && authUser.email === 'kjj0708@gmail.com') {
+        const nowIso = () => new Date().toISOString();
+        await Db.setUser(authUser.uid, {
+          role: 'system_admin', status: 'active',
+          approvedAt: nowIso(), approvedBy: 'system',
+        });
+        toast('관리자 계정으로 자동 승인되었습니다. 대시보드로 이동합니다.', 'success');
+        setTimeout(() => location.replace('/dashboard.html'), 800);
+        return;
+      }
+
       const user = await requirePending();
       if (!user) return; // 가드가 redirect 처리
 

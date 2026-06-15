@@ -15,16 +15,7 @@ import { escapeHtml } from './link-renderer.js';
 
 /** CLMS 스카이라인 로고 SVG 문자열 */
 export function logoSvg(size = 32, color = '#c9a961') {
-  return `<svg width="${size}" height="${size}" viewBox="0 0 48 48" fill="none" aria-hidden="true">
-    <rect x="9"  y="22" width="9"  height="15" fill="${color}"/>
-    <rect x="20" y="13" width="10" height="24" fill="${color}"/>
-    <rect x="32" y="19" width="8"  height="18" fill="${color}"/>
-    <rect x="7"  y="37" width="35" height="3.5" rx="1.5" fill="${color}"/>
-    <rect x="22.5" y="17" width="2.2" height="2.2" fill="#1a3a5c"/>
-    <rect x="25.7" y="17" width="2.2" height="2.2" fill="#1a3a5c"/>
-    <rect x="22.5" y="22" width="2.2" height="2.2" fill="#1a3a5c"/>
-    <rect x="25.7" y="22" width="2.2" height="2.2" fill="#1a3a5c"/>
-  </svg>`;
+  return `<img src="/icons/icon.png" width="${size}" height="${size}" alt="로고" style="object-fit: contain;" />`;
 }
 
 /* ============================================================
@@ -135,8 +126,8 @@ export function mountAuthHeader(el) {
 
 /** 대시보드/내부 화면용 전체 헤더 (사용자 메뉴 포함) */
 export function mountAppHeader(el, { user = null } = {}) {
-  const name = user ? user.name : '게스트';
-  const role = user ? user.role : 'pending';
+  const name = (user && user.name) ? String(user.name) : '게스트';
+  const role = (user && user.role) ? user.role : 'pending';
 
   el.innerHTML = `
     <header class="bg-navy text-white shadow-md sticky top-0 z-40">
@@ -170,7 +161,7 @@ export function mountAppHeader(el, { user = null } = {}) {
           </div>
           <div class="relative" data-menu-root>
             <button data-act="menu"
-              class="flex items-center gap-2 pl-1.5 pr-2 py-1 rounded-full hover:bg-white/10">
+              class="relative flex items-center gap-2 pl-1.5 pr-2 py-1 rounded-full hover:bg-white/10">
               <span class="w-7 h-7 rounded-full bg-gold text-navy-dark text-xs font-bold flex items-center justify-center">
                 ${escapeHtml(name.slice(0, 1))}
               </span>
@@ -178,6 +169,7 @@ export function mountAppHeader(el, { user = null } = {}) {
                 <span class="text-sm font-semibold">${escapeHtml(name)}</span>
               </span>
               <span class="text-[10px] font-bold px-1.5 py-0.5 rounded ${roleBadgeClass(role)}">${escapeHtml(roleLabel(role))}</span>
+              <span data-admin-badge hidden class="absolute -top-0.5 -right-0.5 w-2.5 h-2.5 bg-red-500 rounded-full border-2 border-navy"></span>
             </button>
             <div data-menu hidden
               class="absolute right-0 mt-2 w-48 bg-white text-slate-700 rounded-xl shadow-xl overflow-hidden clms-fade-in">
@@ -185,9 +177,12 @@ export function mountAppHeader(el, { user = null } = {}) {
                 <div class="text-sm font-bold text-navy-dark">${escapeHtml(name)}</div>
                 <div class="text-xs text-slate-400">${escapeHtml(user ? (user.department || '') : '')}</div>
               </div>
+              ${(role === 'system_admin' || role === 'project_manager') ? `<button data-act="approvals" class="w-full text-left px-4 py-2.5 text-sm hover:bg-slate-50 flex justify-between items-center">
+                사용자 승인 관리
+                <span data-admin-badge-count hidden class="bg-red-500 text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full"></span>
+              </button>` : ''}
               <button data-act="profile" class="w-full text-left px-4 py-2.5 text-sm hover:bg-slate-50">내 정보 수정</button>
-              ${role === 'system_admin' ? '<button data-act="approvals" class="w-full text-left px-4 py-2.5 text-sm hover:bg-slate-50">사용자 승인 관리</button>' : ''}
-              <button data-act="logout"  class="w-full text-left px-4 py-2.5 text-sm text-red-600 hover:bg-red-50 border-t border-slate-100">로그아웃</button>
+              <button data-act="logout" class="w-full text-left px-4 py-2.5 text-sm text-red-600 hover:bg-red-50 border-t border-slate-100">로그아웃</button>
             </div>
           </div>
         </div>
@@ -290,6 +285,30 @@ export function mountAppHeader(el, { user = null } = {}) {
         }
       })
       .catch(() => { /* noop */ });
+      
+    // 관리자 전용: 승인 대기 알림 배지
+    if (role === 'system_admin' || role === 'project_manager') {
+      Promise.all([Db.listApprovalRequests({ status: 'pending' }), Db.listProjects()]).then(([reqs, projs]) => {
+        let count = 0;
+        if (role === 'system_admin') {
+          count = reqs.length;
+        } else {
+          const myProjIds = projs.filter(p => p.createdBy === user.uid || (p.members && p.members.officer && p.members.officer.uid === user.uid)).map(p => p.projectId);
+          count = reqs.filter(r => r.userInfo && r.userInfo.userType !== 'officer' && myProjIds.includes(r.userInfo.requestedProjectId)).length;
+        }
+        
+        if (count > 0) {
+          const adminBadge = el.querySelector('[data-admin-badge]');
+          const adminBadgeCount = el.querySelector('[data-admin-badge-count]');
+          if (adminBadge) adminBadge.hidden = false;
+          if (adminBadgeCount) {
+            adminBadgeCount.textContent = count > 99 ? '99+' : count;
+            adminBadgeCount.hidden = false;
+          }
+        }
+      })
+      .catch(() => { /* noop */ });
+    }
   }
 }
 

@@ -32,10 +32,21 @@ export function canViewProject(user, project) {
 
   if (memberUids(project).includes(user.uid)) return true;
 
-  // 발주처(공무원)는 같은 부서 사업 조회 가능
-  if (canEditProjects(user)) {
+  // 공무원: 직위에 따른 계층적 사업 조회 권한
+  if (user.role && ['national_director', 'department_head', 'manager', 'officer'].includes(user.role)) {
     const dept = project.basicInfo && project.basicInfo.department;
-    if (dept && user.department && dept === user.department) return true;
+    if (dept && user.department) {
+      if (user.role === 'national_director') {
+        // 국장: 국 전체 (예: '도시주택국'으로 시작하는 사업)
+        if (dept.startsWith('도시주택국')) return true;
+      } else if (user.role === 'department_head') {
+        // 과장: 과 전체 (예: 자신의 소속(도시주택국 도로과)으로 시작하는 사업)
+        if (dept.startsWith(user.department)) return true;
+      } else {
+        // 팀장/주무관: 자신의 소속과 정확히 일치하거나 소속으로 시작하는 사업 (하위팀이 있는 경우 대비)
+        if (dept.startsWith(user.department)) return true;
+      }
+    }
   }
 
   // 시공사·감리: 등록된 연락처가 일치하면 조회 가능 (가입 자동 매칭 전 단계)
