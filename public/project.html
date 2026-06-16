@@ -391,7 +391,7 @@
                 <span>📷 사진 첨부</span>
                 <input type="file" multiple accept="image/*" class="hidden" data-act="attach-img" />
               </label>
-              <div class="text-[10px] text-slate-400">자동 100KB 압축</div>
+              <div class="text-[10px] text-slate-400"><span data-f="img-count">0</span>/4 · 자동 100KB 압축</div>
             </div>
           </div>
           <div class="mt-5 flex gap-2 justify-end">
@@ -399,6 +399,7 @@
             <button data-act="save" class="px-5 py-2 rounded-lg text-sm font-bold text-white bg-navy hover:bg-navy-light">${isEdit ? '저장' : '등록'}</button>
           </div>
         </div>`;
+      const MAX_IMAGES = 4;
       let pendingImages = isEdit && existing.images ? [...existing.images] : [];
       const renderPreview = () => {
         const p = overlay.querySelector('[data-f="img-preview"]');
@@ -408,25 +409,33 @@
             <button data-act="del-img" data-idx="${i}" class="absolute top-0.5 right-0.5 bg-black/50 text-white rounded-full w-5 h-5 flex items-center justify-center text-[10px] hover:bg-black/70">✕</button>
           </div>
         `).join('');
+        const c = overlay.querySelector('[data-f="img-count"]');
+        if (c) c.textContent = pendingImages.length;
       };
       renderPreview();
 
       overlay.addEventListener('change', async (e) => {
         if (e.target.dataset.act === 'attach-img') {
-          const files = e.target.files;
+          const files = [...e.target.files];
+          e.target.value = '';
           if (!files.length) return;
+          const remaining = MAX_IMAGES - pendingImages.length;
+          if (remaining <= 0) { toast('이미지는 최대 4개까지 첨부할 수 있습니다.', 'warning'); return; }
+          const accepted = files.slice(0, remaining);
+          if (files.length > remaining) toast(`최대 ${MAX_IMAGES}개까지만 첨부됩니다.`, 'warning');
           const saveBtn = overlay.querySelector('[data-act="save"]');
           saveBtn.disabled = true;
           try {
-            for (const file of files) {
+            for (const file of accepted) {
               const b64 = await compressImage(file, 100);
-              const url = await Db.uploadImage(b64);
-              pendingImages.push(url);
+              pendingImages.push(b64);
             }
             renderPreview();
-          } catch(err) { toast('이미지 처리 중 오류 발생', 'error'); }
+          } catch(err) {
+            console.error('image compress failed', err);
+            toast('이미지 처리 중 오류 발생', 'error');
+          }
           saveBtn.disabled = false;
-          e.target.value = '';
         }
       });
 
@@ -493,7 +502,7 @@
       overlay.addEventListener('click', (e) => { 
         if (e.target === overlay || e.target.dataset.act === 'close') { close(); return; }
         if (e.target.dataset.act === 'view-img') {
-          openImageViewer(post.images, Number(e.target.dataset.idx));
+          openImageViewer(post.images, { index: Number(e.target.dataset.idx) });
         }
       });
 
