@@ -41,10 +41,10 @@
         </button>
       </div>
 
-      <!-- 공사 하위 탭: 발주중 / 공사중 / 준공 -->
+      <!-- 공사 하위 탭: 발주준비 / 공사중 / 준공 -->
       <div id="tabs-phase" class="flex gap-1.5 mt-3 flex-wrap">
-        <button data-phase="발주중" class="tab-phase px-3 py-1 text-xs font-bold rounded-full border transition-all">
-          발주중 <span data-phase-count="발주중">0</span>
+        <button data-phase="발주준비" class="tab-phase px-3 py-1 text-xs font-bold rounded-full border transition-all">
+          발주준비 <span data-phase-count="발주준비">0</span>
         </button>
         <button data-phase="공사중" class="tab-phase px-3 py-1 text-xs font-bold rounded-full border transition-all">
           공사중 <span data-phase-count="공사중">0</span>
@@ -54,6 +54,9 @@
         </button>
       </div>
     </div>
+
+    <!-- 단계별 요약 카드 -->
+    <div id="summary" hidden class="mt-3"></div>
 
     <div class="flex items-center justify-between mt-4 mb-2">
       <h2 class="text-sm font-bold text-slate-500">내 사업</h2>
@@ -94,18 +97,19 @@
       // 카테고리/단계 분류
       const byCat = { 공사: [], 용역: [] };
       for (const p of projects) byCat[projectCategory(p)].push(p);
-      const byPhase = { 발주중: [], 공사중: [], 준공: [] };
+      const byPhase = { 발주준비: [], 공사중: [], 준공: [] };
       for (const p of byCat['공사']) byPhase[constructionPhase(p)].push(p);
 
       // 카운트 반영
       document.querySelector('[data-cat-count="공사"]').textContent = byCat['공사'].length;
       document.querySelector('[data-cat-count="용역"]').textContent = byCat['용역'].length;
-      document.querySelector('[data-phase-count="발주중"]').textContent = byPhase['발주중'].length;
+      document.querySelector('[data-phase-count="발주준비"]').textContent = byPhase['발주준비'].length;
       document.querySelector('[data-phase-count="공사중"]').textContent = byPhase['공사중'].length;
       document.querySelector('[data-phase-count="준공"]').textContent = byPhase['준공'].length;
 
       const listEl = document.getElementById('list');
       const emptyEl = document.getElementById('empty');
+      const summaryEl = document.getElementById('summary');
       const tabsPhaseEl = document.getElementById('tabs-phase');
 
       const TAB_CAT_ACTIVE = 'bg-white text-navy-dark shadow-sm';
@@ -115,7 +119,7 @@
 
       // 초기 탭: 공사가 비어 있고 용역이 있으면 용역으로
       let curCat = (byCat['공사'].length === 0 && byCat['용역'].length > 0) ? '용역' : '공사';
-      let curPhase = '발주중';
+      let curPhase = '발주준비';
 
       function renderTabs() {
         document.querySelectorAll('.tab-cat').forEach((btn) => {
@@ -127,6 +131,73 @@
           const active = btn.dataset.phase === curPhase;
           btn.className = `tab-phase px-3 py-1 text-xs font-bold rounded-full border transition-all ${active ? TAB_PHASE_ACTIVE : TAB_PHASE_IDLE}`;
         });
+      }
+
+      function summaryCard({ title, num, denom, color = 'bg-navy' }) {
+        const pct = denom > 0 ? Math.round((num / denom) * 100) : 0;
+        return `
+          <div class="bg-white rounded-xl border border-slate-200 p-3">
+            <div class="flex items-baseline justify-between">
+              <div class="text-xs font-bold text-slate-500">${title}</div>
+              <div class="text-xs text-slate-400">${pct}%</div>
+            </div>
+            <div class="text-sm font-bold text-navy-dark mt-1">
+              전체 공사 <span class="text-navy-dark">${denom}</span>건 중 <span class="text-navy">${num}</span>건
+            </div>
+            <div class="mt-2 h-1.5 bg-slate-100 rounded-full overflow-hidden">
+              <div class="h-full ${color}" style="width:${pct}%"></div>
+            </div>
+          </div>`;
+      }
+
+      function renderSummary() {
+        if (curCat !== '공사') {
+          summaryEl.hidden = true;
+          summaryEl.innerHTML = '';
+          return;
+        }
+        const totalConstr = byCat['공사'].length;
+        const startedCount = byPhase['공사중'].length + byPhase['준공'].length; // 착공 완료
+        const completedCount = byPhase['준공'].length;
+
+        if (totalConstr === 0) {
+          summaryEl.hidden = true;
+          summaryEl.innerHTML = '';
+          return;
+        }
+
+        if (curPhase === '발주준비') {
+          summaryEl.innerHTML = summaryCard({
+            title: '착공 진행 현황',
+            num: startedCount,
+            denom: totalConstr,
+            color: 'bg-blue-500',
+          });
+        } else if (curPhase === '공사중') {
+          const avgProgress = byPhase['공사중'].length === 0 ? 0
+            : Math.round(byPhase['공사중'].reduce((s, p) => s + calcProgress(p), 0) / byPhase['공사중'].length);
+          summaryEl.innerHTML = `
+            <div class="bg-white rounded-xl border border-slate-200 p-3">
+              <div class="flex items-baseline justify-between">
+                <div class="text-xs font-bold text-slate-500">공사중 사업</div>
+                <div class="text-xs text-slate-400">평균 공정률 ${avgProgress}%</div>
+              </div>
+              <div class="text-sm font-bold text-navy-dark mt-1">
+                착공 후 진행 중 <span class="text-navy">${byPhase['공사중'].length}</span>건
+              </div>
+              <div class="mt-2 h-1.5 bg-slate-100 rounded-full overflow-hidden">
+                <div class="h-full bg-gold" style="width:${avgProgress}%"></div>
+              </div>
+            </div>`;
+        } else { // 준공
+          summaryEl.innerHTML = summaryCard({
+            title: '준공 진행 현황',
+            num: completedCount,
+            denom: totalConstr,
+            color: 'bg-emerald-500',
+          });
+        }
+        summaryEl.hidden = false;
       }
 
       function projectCard(p) {
@@ -182,6 +253,7 @@
         btn.addEventListener('click', () => {
           curCat = btn.dataset.cat;
           renderTabs();
+          renderSummary();
           renderList();
         });
       });
@@ -189,11 +261,13 @@
         btn.addEventListener('click', () => {
           curPhase = btn.dataset.phase;
           renderTabs();
+          renderSummary();
           renderList();
         });
       });
 
       renderTabs();
+      renderSummary();
       renderList();
     })();
   </script>

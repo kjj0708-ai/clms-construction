@@ -129,8 +129,8 @@ export const COMMUNICATION_CATEGORIES = {
   },
   report: {
     key: 'report', label: '작업일보', icon: '📋',
-    desc: '시공사·감리 작업 보고',
-    post: 'contractor_supervisor', // 작성 가능: 시공사, 감리
+    desc: '발주처·시공사·감리 작업 보고',
+    post: 'all',
     badge: 'bg-emerald-700 text-white',
   },
 };

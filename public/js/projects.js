@@ -93,19 +93,19 @@ export function projectCategory(project) {
 }
 
 /**
- * 공사 단계 분류 — '발주중' | '공사중' | '준공'
+ * 공사 단계 분류 — '발주준비' | '공사중' | '준공'
  * - 준공: status가 completed이거나 '준공·정산' 단계 완료
  * - 공사중: '착공' 단계 완료
- * - 발주중: 그 외 (착공 이전)
+ * - 발주준비: 그 외 (착공 이전)
  */
 export function constructionPhase(project) {
-  if (!project) return '발주중';
+  if (!project) return '발주준비';
   if (project.status === 'completed') return '준공';
   const list = (project.progress) || [];
   const isDone = (title) => list.some((m) => m.title === title && m.status === 'done');
   if (isDone('준공·정산')) return '준공';
   if (isDone('착공')) return '공사중';
-  return '발주중';
+  return '발주준비';
 }
 
 export function newMilestone({ title, date, status = 'planned', note = '' }) {
