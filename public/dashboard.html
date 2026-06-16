@@ -30,10 +30,32 @@
       <p id="greet-sub" class="text-white/70 text-sm mt-1"></p>
     </section>
 
-    <!-- 통계 -->
-    <div id="stats" class="grid grid-cols-3 gap-2 mt-4"></div>
+    <!-- 카테고리 탭: 공사 / 용역 -->
+    <div class="mt-5">
+      <div id="tabs-cat" class="inline-flex bg-slate-200 rounded-xl p-1 w-full">
+        <button data-cat="공사" class="tab-cat flex-1 px-4 py-1.5 text-sm font-bold rounded-lg transition-all">
+          공사 <span data-cat-count="공사" class="text-xs ml-0.5 opacity-70">0</span>
+        </button>
+        <button data-cat="용역" class="tab-cat flex-1 px-4 py-1.5 text-sm font-bold rounded-lg transition-all">
+          용역 <span data-cat-count="용역" class="text-xs ml-0.5 opacity-70">0</span>
+        </button>
+      </div>
 
-    <div class="flex items-center justify-between mt-6 mb-2">
+      <!-- 공사 하위 탭: 발주중 / 공사중 / 준공 -->
+      <div id="tabs-phase" class="flex gap-1.5 mt-3 flex-wrap">
+        <button data-phase="발주중" class="tab-phase px-3 py-1 text-xs font-bold rounded-full border transition-all">
+          발주중 <span data-phase-count="발주중">0</span>
+        </button>
+        <button data-phase="공사중" class="tab-phase px-3 py-1 text-xs font-bold rounded-full border transition-all">
+          공사중 <span data-phase-count="공사중">0</span>
+        </button>
+        <button data-phase="준공" class="tab-phase px-3 py-1 text-xs font-bold rounded-full border transition-all">
+          준공 <span data-phase-count="준공">0</span>
+        </button>
+      </div>
+    </div>
+
+    <div class="flex items-center justify-between mt-4 mb-2">
       <h2 class="text-sm font-bold text-slate-500">내 사업</h2>
       <a id="btn-new" href="/project-new.html" hidden
         class="text-xs font-bold text-white bg-navy hover:bg-navy-light rounded-lg px-3 py-1.5">+ 신규 사업</a>
@@ -50,7 +72,10 @@
     import { escapeHtml } from '/js/components/link-renderer.js';
     import { requireActive } from '/js/auth.js';
     import { roleLabel, PROJECT_STATUS } from '/js/constants.js';
-    import { listAccessibleProjects, canEditProjects, calcProgress, nextMilestone, formatDate } from '/js/projects.js';
+    import {
+      listAccessibleProjects, canEditProjects, calcProgress, nextMilestone, formatDate,
+      projectCategory, constructionPhase,
+    } from '/js/projects.js';
 
     (async () => {
       const user = await requireActive();
@@ -65,30 +90,46 @@
       if (canEditProjects(user)) document.getElementById('btn-new').hidden = false;
 
       const projects = await listAccessibleProjects(user);
-      const inProgress = projects.filter((p) => p.status === 'active').length;
-      const completed = projects.filter((p) => p.status === 'completed').length;
-      const stats = [
-        { v: projects.length, label: '전체', cls: 'text-navy-dark' },
-        { v: inProgress, label: '진행 중', cls: 'text-blue-600' },
-        { v: completed, label: '완료', cls: 'text-emerald-600' },
-      ];
-      document.getElementById('stats').innerHTML = stats.map((s) => `
-        <div class="bg-white rounded-xl border border-slate-200 p-3 text-center">
-          <div class="text-2xl font-extrabold ${s.cls}">${s.v}</div>
-          <div class="text-[11px] text-slate-400 mt-0.5">${s.label}</div>
-        </div>`).join('');
+
+      // 카테고리/단계 분류
+      const byCat = { 공사: [], 용역: [] };
+      for (const p of projects) byCat[projectCategory(p)].push(p);
+      const byPhase = { 발주중: [], 공사중: [], 준공: [] };
+      for (const p of byCat['공사']) byPhase[constructionPhase(p)].push(p);
+
+      // 카운트 반영
+      document.querySelector('[data-cat-count="공사"]').textContent = byCat['공사'].length;
+      document.querySelector('[data-cat-count="용역"]').textContent = byCat['용역'].length;
+      document.querySelector('[data-phase-count="발주중"]').textContent = byPhase['발주중'].length;
+      document.querySelector('[data-phase-count="공사중"]').textContent = byPhase['공사중'].length;
+      document.querySelector('[data-phase-count="준공"]').textContent = byPhase['준공'].length;
 
       const listEl = document.getElementById('list');
       const emptyEl = document.getElementById('empty');
-      if (projects.length === 0) {
-        listEl.innerHTML = '';
-        emptyEl.hidden = false;
-        emptyEl.textContent = canEditProjects(user)
-          ? '등록된 사업이 없습니다. 신규 사업을 등록해 보세요.'
-          : '참여 중인 사업이 없습니다. 관리자에게 사업 배정을 요청하세요.';
-        return;
+      const tabsPhaseEl = document.getElementById('tabs-phase');
+
+      const TAB_CAT_ACTIVE = 'bg-white text-navy-dark shadow-sm';
+      const TAB_CAT_IDLE = 'text-slate-500 hover:text-slate-700';
+      const TAB_PHASE_ACTIVE = 'bg-navy text-white border-navy';
+      const TAB_PHASE_IDLE = 'bg-white text-slate-600 border-slate-200 hover:border-navy';
+
+      // 초기 탭: 공사가 비어 있고 용역이 있으면 용역으로
+      let curCat = (byCat['공사'].length === 0 && byCat['용역'].length > 0) ? '용역' : '공사';
+      let curPhase = '발주중';
+
+      function renderTabs() {
+        document.querySelectorAll('.tab-cat').forEach((btn) => {
+          const active = btn.dataset.cat === curCat;
+          btn.className = `tab-cat flex-1 px-4 py-1.5 text-sm font-bold rounded-lg transition-all ${active ? TAB_CAT_ACTIVE : TAB_CAT_IDLE}`;
+        });
+        tabsPhaseEl.hidden = curCat !== '공사';
+        document.querySelectorAll('.tab-phase').forEach((btn) => {
+          const active = btn.dataset.phase === curPhase;
+          btn.className = `tab-phase px-3 py-1 text-xs font-bold rounded-full border transition-all ${active ? TAB_PHASE_ACTIVE : TAB_PHASE_IDLE}`;
+        });
       }
-      listEl.innerHTML = projects.map((p) => {
+
+      function projectCard(p) {
         const pr = calcProgress(p);
         const st = PROJECT_STATUS[p.status] || PROJECT_STATUS.active;
         const nm = nextMilestone(p);
@@ -115,7 +156,45 @@
             </div>
             <div class="text-[11px] text-slate-400 mt-1">시공 ${escapeHtml((m.contractor && m.contractor.org) || '미정')}${m.contractor && m.contractor.position ? ` ${escapeHtml(m.contractor.position)}` : ''} · 감리 ${escapeHtml((m.supervisor && m.supervisor.org) || '미정')}${m.supervisor && m.supervisor.position ? ` ${escapeHtml(m.supervisor.position)}` : ''}</div>
           </a>`;
-      }).join('');
+      }
+
+      function renderList() {
+        const items = curCat === '용역' ? byCat['용역'] : byPhase[curPhase];
+        if (items.length === 0) {
+          listEl.innerHTML = '';
+          emptyEl.hidden = false;
+          if (projects.length === 0) {
+            emptyEl.textContent = canEditProjects(user)
+              ? '등록된 사업이 없습니다. 신규 사업을 등록해 보세요.'
+              : '참여 중인 사업이 없습니다. 관리자에게 사업 배정을 요청하세요.';
+          } else {
+            emptyEl.textContent = curCat === '용역'
+              ? '용역 사업이 없습니다.'
+              : `${curPhase} 사업이 없습니다.`;
+          }
+          return;
+        }
+        emptyEl.hidden = true;
+        listEl.innerHTML = items.map(projectCard).join('');
+      }
+
+      document.querySelectorAll('.tab-cat').forEach((btn) => {
+        btn.addEventListener('click', () => {
+          curCat = btn.dataset.cat;
+          renderTabs();
+          renderList();
+        });
+      });
+      document.querySelectorAll('.tab-phase').forEach((btn) => {
+        btn.addEventListener('click', () => {
+          curPhase = btn.dataset.phase;
+          renderTabs();
+          renderList();
+        });
+      });
+
+      renderTabs();
+      renderList();
     })();
   </script>
 </body>

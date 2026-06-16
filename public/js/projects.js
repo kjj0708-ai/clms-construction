@@ -5,7 +5,7 @@
  */
 
 import { Db, genId } from './backend.js';
-import { PROJECT_EDITOR_ROLES } from './constants.js';
+import { PROJECT_EDITOR_ROLES, isServiceType } from './constants.js';
 
 /** 사업 등록·진행상황 관리 권한 (감독공무원 그룹) */
 export function canEditProjects(user) {
@@ -84,6 +84,28 @@ export function sortedProgress(project) {
 /** 다음 예정/진행 단계 */
 export function nextMilestone(project) {
   return sortedProgress(project).find((m) => m.status !== 'done') || null;
+}
+
+/** 사업 카테고리: '공사' | '용역' */
+export function projectCategory(project) {
+  const type = project && project.basicInfo && project.basicInfo.type;
+  return isServiceType(type) ? '용역' : '공사';
+}
+
+/**
+ * 공사 단계 분류 — '발주중' | '공사중' | '준공'
+ * - 준공: status가 completed이거나 '준공·정산' 단계 완료
+ * - 공사중: '착공' 단계 완료
+ * - 발주중: 그 외 (착공 이전)
+ */
+export function constructionPhase(project) {
+  if (!project) return '발주중';
+  if (project.status === 'completed') return '준공';
+  const list = (project.progress) || [];
+  const isDone = (title) => list.some((m) => m.title === title && m.status === 'done');
+  if (isDone('준공·정산')) return '준공';
+  if (isDone('착공')) return '공사중';
+  return '발주중';
 }
 
 export function newMilestone({ title, date, status = 'planned', note = '' }) {
